@@ -5,3 +5,5 @@ desktop/app.html
 dist/
 *.log
 _c.js
+apk/*.apk
+apk/*.idsig

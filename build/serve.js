@@ -1,13 +1,13 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const ROOT = __dirname;
+const ROOT = path.join(__dirname, '..');
 const PORT = 3110;
-const MIME = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.pdf': 'application/pdf', '.png': 'image/png' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.pdf': 'application/pdf' };
 
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
-  if (p === '/') p = '/index.html';
+  if (p === '/') p = '/docs/index.html';
   const f = path.join(ROOT, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
   if (!f.startsWith(ROOT)) { res.writeHead(403).end('no'); return; }
   fs.readFile(f, (err, buf) => {

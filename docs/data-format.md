@@ -1,60 +1,60 @@
-# 数据格式（`data/*.json`）
+# 数据格式（`data/CN.json`）
 
-一个 JSON 文件对应一个空域或机场。APP 顶部下拉框切换；也可以在页面里点「导入数据」现场加载。
+一个文件就是全国数据集：机场 + 进近区/扇区 + 区调扇区 + 塔台区。
+APP 顶部下拉框可切换/导入数据集；也可以在页面里点「导入」现场加载。
 
-## 字段
+## 顶层
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `site` | obj | `{ id, nameCn, nameEn }`，`id` 用 ICAO 码 |
-| `cycle` / `meta.cycle` | str | 数据周期，如 `EAIP 2026-12 (V1.3)` |
-| `arp` | `[lat, lon]` | 机场基准点，十进制度 |
-| `arpText` | str | 原文坐标，仅用于显示 |
-| `comms` | arr | 通信设施：`{ type, cn, en, f, alt, time }`，`f`/`alt` 单位 MHz |
-| `navs` | arr | 导航设施：`{ id, type, f, lat, lon, location, note }` |
-| `tma` | obj | 进近管制区：`{ nameCn, vertical, pts }` |
-| `ctr` | arr | 塔台管制区等小区域：`{ nameCn, vertical, pts }` |
-| `sectors` | arr | 区调扇区：`{ nameEn, unit, call, freqs:[{rank,f,open}], vertical, pts, tyn }` |
-| `runways` | arr | 跑道：`{ d, dim, hdg, thr }` |
-| `points` | arr | 可选，自定义点：`{ name, lat, lon, freq, kind }` |
+| `meta` | obj | `{ cycle, effective, nextEffective, national, airports, sectors, areas }` |
+| `site` | obj | `{ id:"CN", nameCn:"全国", nameEn:"CHINA" }` |
+| `cycle` / `effective` / `nextEffective` | str | 数据周期与生效/失效日期 |
+| `airports` | arr | 机场（见下） |
+| `areas` | arr | 进近管制区与 APxx 扇区（见下） |
+| `sectors` | arr | 区调扇区（见下） |
+| `ctr` | arr | 塔台管制区等 ATS 空域 `{ icao, nameCn, nameEn, vertical, pts }` |
 
-约定：
+## 机场 `airports[]`
 
-- `pts` 一律是 `[[纬度, 经度], ...]` 十进制度，首尾不必闭合。
-- `tyn: true` 的扇区用高亮色并常显标注。
+| 字段 | 说明 |
+|---|---|
+| `id` / `iata` | ICAO / IATA 代码 |
+| `nameCn` / `nameEn` | 中英文场名，如「太原/武宿」 |
+| `arp` | `[纬度, 经度]` 十进制度 |
+| `arpText` | AIP 原文坐标，仅显示用 |
+| `elev` / `magvar` | 标高、磁差（自由文本） |
+| `comms` | `[{ type, cn, en, f, alt, time, note }]`，`f`/`alt` 单位 MHz |
+| `navs` | `[{ id, type, f, lat, lon, loc, cn, rwy, note, time }]` |
+| `runways` | `[{ d, dim, hdg, thr }]` |
+
+`comms[].type` 取 AIP 的 `designation`：`TWR`/`GND`/`DEL`(`Delivery`)/`APN`/`RAMP`/`ATIS`/`APP`/`EMG`/`AOC`/`OP-CTL`。
+
+## 进近区 `areas[]`
+
+| 字段 | 说明 |
+|---|---|
+| `icao` | 所属机场（由 `locationIndicator` 前 4 位得到） |
+| `loc` | 完整代码，如 `ZBYNAPP` / `ZBYNAP01E` |
+| `nameCn` / `nameEn` | 名称，扇区形如 `AP01(东)` |
+| `call` / `unit` | 呼号 / 值守单位 |
+| `vertical` | 垂直范围（已去掉坐标、折叠破折号） |
+| `freqs` | `[{ rank:PRIMARY/ALTERNATE, f, open, mode, note }]` |
+| `pts` | `[[纬度, 经度], ...]` |
+| `sub` | `true` 表示是 APxx 扇区（父区「XX进近」为 `false`） |
+
+## 区调扇区 `sectors[]`
+
+`{ loc, nameCn, nameEn, call, unit, vertical, freqs, pts }`。
+`call` 是管制单位呼号（如「北京区域」），`unit` 是实际值守单位（如「太原区域管制室」）。
+
+## 约定
+
+- `pts` 一律是 `[[纬度, 经度], ...]` 十进制度，首尾一般已闭合。
 - `vertical` 是自由文本，如 `GND–5100 m`、`7800 m–GND`。
+- 频率字段不带单位，单位统一 MHz；ILS 下滑台/指点标也在 `navs` 里但不可用于通话。
 
-## 最小示例
+## 新增/更新数据
 
-```json
-{
-  "site":  { "id": "ZBSJ", "nameCn": "石家庄/正定", "nameEn": "SHIJIAZHUANG" },
-  "cycle": "EAIP 2026-12",
-  "arp":   [38.2807, 114.6964],
-  "comms": [
-    { "type": "TWR", "cn": "石家庄塔台", "f": "118.35", "alt": "124.75", "time": "H24" }
-  ],
-  "navs": [
-    { "id": "SJW", "type": "VOR/DME", "f": "117.70", "lat": "N38°16.9′", "lon": "E114°41.6′" }
-  ],
-  "tma": {
-    "nameCn": "石家庄进近", "vertical": "GND–5100 m",
-    "pts": [[38.10, 114.20], [38.60, 114.90], [37.95, 115.10]]
-  },
-  "ctr": [
-    { "nameCn": "塔台管制区", "vertical": "SFC–1500 m",
-      "pts": [[38.20, 114.40], [38.36, 114.62], [38.20, 114.90], [38.04, 114.62]] }
-  ],
-  "sectors": [
-    { "nameEn": "AR07", "unit": "北京区域管制中心", "call": "北京区域",
-      "freqs": [{ "rank": "PRIMARY", "f": "127.70" }, { "rank": "ALTERNATE", "f": "120.70" }],
-      "vertical": "12500 m–GND", "pts": [[38.0, 113.5], [39.0, 114.0], [38.4, 115.0]], "tyn": false }
-  ]
-}
-```
-
-## 新增一个数据集
-
-1. 按 [抓取流程.md](抓取流程.md) 抓 `AD_AIP` / `APPAREA` / `CTAAREA` 三份原始数据。
-2. `node build/gen.js` 生成 `data/ZBYN.json`（换机场改脚本里的 ICAO 与文件名）。
-3. 丢进 `data/` 后重新打包 APK；也可以用页面里的「导入数据」临时加载。
+按 [抓取流程.md](抓取流程.md) 抓原始数据 → `node build/gen-national.js` → `node build/build.js`。
+只想临时看别的数据包，也可以用页面里的「导入」加载同格式 JSON。

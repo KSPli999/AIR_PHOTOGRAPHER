@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>天际电波 SKYWAVE · 空域频率图</title>
+<title>天际电波 SKYWAVE · 全国空管频率图</title>
 <style>
   :root{
     --bg:#0b1016; --panel:#131b24; --panel2:#18222e; --line:#243240;
@@ -37,17 +37,23 @@
   .lbl.sm{font-size:9px;fill:#9fb6c9;font-weight:500}
   .freqlbl{font-size:10px;fill:#39d0ff;font-weight:700;pointer-events:none;
     paint-order:stroke;stroke:#04080c;stroke-width:2.8px}
+  .apt{font-size:11px;fill:#ffe0a3;font-weight:700;pointer-events:none;paint-order:stroke;
+    stroke:#05090d;stroke-width:2.8px;stroke-linejoin:round}
+  .aptdot{cursor:pointer}
   #hud{position:absolute;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 20px)}
   .chip{font-size:11px;padding:5px 9px;border-radius:999px;border:1px solid var(--line);
     background:#0d151dcc;color:var(--dim);backdrop-filter:blur(6px)}
   .chip.on{color:#04121a;background:var(--acc);border-color:var(--acc);font-weight:700}
+  #legend{position:absolute;left:10px;bottom:12px;font-size:10px;color:#7f95a8;
+    background:#0d151dcc;border:1px solid var(--line);border-radius:10px;padding:6px 9px;line-height:1.7}
+  #legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
   #zoom{position:absolute;right:10px;bottom:14px;display:flex;flex-direction:column;gap:6px}
   #zoom button{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);
     background:#0d151dcc;color:var(--txt);font-size:17px;line-height:1}
-  #sheet{position:absolute;left:0;right:0;bottom:0;max-height:62%;overflow:auto;
+  #sheet{position:absolute;left:0;right:0;bottom:0;max-height:64%;overflow:auto;
     background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;
     padding:12px 14px calc(22px + env(safe-area-inset-bottom, 0px));transform:translateY(101%);transition:transform .25s ease;
-    box-shadow:0 -18px 40px #000a}
+    box-shadow:0 -18px 40px #000a;z-index:8}
   #sheet.up{transform:translateY(0)}
   #sheet h3{margin:0 0 2px;font-size:15px}
   #sheet .sub{color:var(--dim);font-size:11px;margin-bottom:10px}
@@ -56,6 +62,7 @@
   .fr b{font-size:16px;font-variant-numeric:tabular-nums;letter-spacing:.4px}
   .fr .k{font-size:11px;color:var(--dim);flex:1}
   .fr .tag{font-size:10px;color:#7fe3ff;border:1px solid #2a4b5e;border-radius:4px;padding:0 4px}
+  .fr .ex{font-size:10px;color:#6f8698;text-align:right;line-height:1.35;max-width:46%}
   #tabs{display:flex;gap:6px;padding:8px 12px 0;flex:0 0 auto}
   #tabs button{flex:1;padding:9px 6px;border-radius:10px;border:1px solid var(--line);
     background:var(--panel);color:var(--dim);font-size:12px}
@@ -67,9 +74,9 @@
     border-bottom:1px solid var(--line);letter-spacing:.5px}
   .row{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid #18222e}
   .row:last-child{border-bottom:0}
-  .row .nm{flex:0 0 auto;width:86px;font-size:12px;color:var(--dim)}
+  .row .nm{flex:0 0 auto;width:96px;font-size:12px;color:var(--dim)}
   .row .fv{flex:1;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
-  .row .ex{font-size:10px;color:#6f8698;text-align:right;line-height:1.35;max-width:44%}
+  .row .ex{font-size:10px;color:#6f8698;text-align:right;line-height:1.35;max-width:46%}
   .foot{color:#5d7386;font-size:10.5px;line-height:1.7;padding:4px 2px 30px}
   .foot b{color:#8ba0b5}
   a{color:var(--acc)}
@@ -77,19 +84,24 @@
     background:#39d0ff;color:#04121a;font-size:12px;font-weight:700;padding:8px 14px;
     border-radius:999px;transition:.2s;pointer-events:none;z-index:20}
   .toast.on{opacity:1;transform:translate(-50%,0)}
+  .topbar{position:sticky;top:-10px;z-index:2;background:var(--bg);padding:2px 0 8px}
+  .topbar input{width:100%;background:#0e1720;color:var(--txt);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;font-size:13px}
+  .hint{color:#6f8698;font-size:10.5px;margin:0 2px 8px}
 </style>
 </head>
 <body>
 <header>
   <div class="t1">天际电波<small>SKYWAVE · AIRBAND ATLAS</small></div>
-  <div class="t2" style="color:#7f95a8">拍机 · 频率 · 空域</div>
+  <div class="t2" style="color:#7f95a8">全国空管频率 · 塔台 / 进近 / 区调</div>
   <div class="t2">
-    <span class="badge">EAIP 2026-12 (2612期)</span>
-    <span>生效 2026-11-26</span><span>·</span><span id="arpTop">ARP N37°44.9′ E112°37.8′</span>
+    <span class="badge" id="cycBadge">EAIP</span>
+    <span id="effTxt"></span>
+    <span>·</span><span id="statTxt"></span>
   </div>
   <div class="t3">
     <select id="packSel" title="数据集"></select>
-    <button id="impBtn">导入数据</button>
+    <button id="impBtn">导入</button>
     <button id="expBtn">导出</button>
     <input type="file" id="fileIn" accept=".json,application/json" hidden/>
   </div>
@@ -105,19 +117,27 @@
   <div id="map">
     <svg id="svg"></svg>
     <div id="hud">
-      <div class="chip on" data-layer="tma">进近区</div>
-      <div class="chip on" data-layer="ctr">塔台区</div>
-      <div class="chip on" data-layer="acc">区调扇区</div>
-      <div class="chip" data-view="pek">全北京区调</div>
-      <div class="chip on" data-layer="nav">导航台</div>
-      <div class="chip on" data-layer="rwy">跑道</div>
+      <div class="chip on" data-layer="acc">区调</div>
+      <div class="chip on" data-layer="tma">进近</div>
+      <div class="chip on" data-layer="twr">塔台区</div>
+      <div class="chip on" data-layer="apt">机场</div>
+    </div>
+    <div id="legend">
+      <div><i style="background:#a78bfa"></i>区域管制扇区</div>
+      <div><i style="background:#39d0ff"></i>进近管制区</div>
+      <div><i style="background:#fb7185"></i>塔台管制区</div>
+      <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
     </div>
     <div id="zoom">
       <button id="zin">+</button><button id="zout">−</button><button id="zfit">⤢</button>
     </div>
   </div>
 
-  <div class="list" id="listTbl"></div>
+  <div class="list" id="listTbl">
+    <div class="topbar"><input id="q" placeholder="搜索机场 / 单位 / 频率，如 太原、ZBAA、118.25"/></div>
+    <div class="hint" id="qinfo"></div>
+    <div id="tblBody"></div>
+  </div>
   <div class="list" id="listSrc"></div>
 
   <div id="sheet">
@@ -133,14 +153,13 @@ const P = (lat, lon) => [lat, lon];
 let D = null;
 
 // ---------- projection ----------
-let proj = {lat0: 37.75, lon0: 112.63, k: 1, w: 0, h: 0, scale: 1, ox: 0, oy: 0, tx: 0, ty: 0};
+let proj = {lat0: 35, lon0: 104, cos: 1, scale: 1, w: 0, h: 0, ox: 0, oy: 0, tx: 0, ty: 0};
 function makeProjection(bounds, w, h){
   const [minLat, maxLat, minLon, maxLon] = bounds;
   const lat0 = (minLat + maxLat) / 2, lon0 = (minLon + maxLon) / 2;
   const cos = Math.cos(lat0 * Math.PI / 180);
-  // world units: x = (lon-lon0)*cos, y = -(lat-lat0)
-  const sx = (maxLon - minLon) * cos, sy = (maxLat - minLat);
-  const pad = 0.10;
+  const sx = Math.max((maxLon - minLon) * cos, .2), sy = Math.max(maxLat - minLat, .2);
+  const pad = 0.08;
   const scale = Math.min(w / (sx * (1 + pad * 2)), h / (sy * (1 + pad * 2)));
   return {lat0, lon0, cos, scale, w, h, ox: w / 2, oy: h / 2, tx: 0, ty: 0};
 }
@@ -161,149 +180,129 @@ function centroid(pts){
   if (Math.abs(a) < 1e-12) { const m = pts.reduce((s, p) => [s[0] + p[0], s[1] + p[1]], [0, 0]); return [m[0] / pts.length, m[1] / pts.length]; }
   return [cy / a, cx / a];
 }
+function inPoly(p, poly){
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][1], yi = poly[i][0], xj = poly[j][1], yj = poly[j][0];
+    if (((yi > p[0]) !== (yj > p[0])) && (p[1] < (xj - xi) * (p[0] - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
 function vfmt(s){
-  s = String(s||"").replace(/s+/g," ").trim();
+  s = String(s || "").replace(/\s+/g, " ").trim();
   if (!s) return "";
-  if (/Same as Taiyuan/i.test(s)) return "同太原进近边界";
-  if (/In area/i.test(s)) return "6000 m–GND（部分 7800 m–GND）";
-  return s.replace(/—+/g,"–").replace(/s*–s*/g,"–");
+  return s
+    .replace(/(?:\s*[—–-]\s*){2,}/g, "–")
+    .replace(/\s*–\s*/g, "–")
+    .replace(/\s*-\s*(?=SFC|GND|Above|TL|TA|\d)/g, "–")
+    .replace(/\s*([–])\s*/g, "$1");
 }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function pf(packArr){
+  return (packArr || []).map(x => x.f).filter(Boolean).join(' / ');
+}
 
-// ---------- layer state ----------
-const layerOn = {tma: true, ctr: true, acc: true, nav: true, rwy: true};
-let viewMode = 'tyn';
+// ---------- state ----------
+const layerOn = {acc: true, tma: true, twr: true, apt: true};
+let zoom = 1, focus = null;
 
 // ---------- render ----------
-function render(){
+function render(keepView){
   const svg = document.getElementById('svg');
-  const w = svg.clientWidth || svg.getBoundingClientRect().width || window.innerWidth, h = svg.clientHeight || svg.getBoundingClientRect().height || (window.innerHeight - 150);
+  const w = svg.clientWidth || svg.getBoundingClientRect().width || window.innerWidth;
+  const h = svg.clientHeight || svg.getBoundingClientRect().height || (window.innerHeight - 170);
   const all = [];
-  D.tma && all.push(...D.tma.pts);
-  (D.ctr || []).forEach(c => all.push(...c.pts));
-  const vis = (D.sectors || []).filter(s => s.pts && s.pts.length && (viewMode === 'pek' || s.tyn));
-  all.push(...vis.flatMap(s => s.pts), D.arp);
-  const lats = all.map(p => p[0]), lons = all.map(p => p[1]);
-  const b = [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
-  // 限制在太原终端区附近，避免外围扇区把视野拉太大
-  if (viewMode === 'tyn') {
-    b[0] = Math.max(b[0], 36.6); b[1] = Math.min(b[1], 39.0);
-    b[2] = Math.max(b[2], 111.0); b[3] = Math.min(b[3], 114.4);
+  if (focus) {
+    const a = D.airports.find(x => x.id === focus);
+    if (a) all.push([a.arp[0] - .9, a.arp[0] + .9, a.arp[1] - .9, a.arp[1] + .9]);
   }
-  proj = makeProjection(b, w, h);
-  proj.tx = 0; proj.ty = 0; zoom = 1;
+  const box = () => {
+    if (focus && all.length) return all[0];
+    const pts = [];
+    D.sectors.forEach(s => pts.push(...s.pts));
+    D.areas.forEach(s => pts.push(...s.pts));
+    D.ctr.forEach(s => pts.push(...s.pts));
+    D.airports.forEach(a => pts.push(a.arp));
+    const lats = pts.map(p => p[0]), lons = pts.map(p => p[1]);
+    return [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
+  };
+  const keep = keepView ? {tx: proj.tx, ty: proj.ty, z: zoom} : null;
+  proj = makeProjection(box(), w, h);
+  if (keep) { proj.tx = keep.tx; proj.ty = keep.ty; zoom = keep.z; }
+  else { proj.tx = 0; proj.ty = 0; zoom = 1; }
+  const zc = zoom;
 
   let g = '';
-  // 区调扇区
+  // ---- 区调扇区 ----
   if (layerOn.acc) {
-    (D.sectors || []).filter(s => s.pts && s.pts.length >= 3).forEach((s, i) => {
-      const isMain = s.tyn;
-      const c = centroid(s.pts);
-      const [lx, ly] = pt(c);
-      g += `<path class="poly" data-kind="acc" data-i="${i}" d="${path(s.pts)}"
-        fill="${isMain ? '#a78bfa' : '#4b6b86'}" fill-opacity="${isMain ? .17 : .06}"
-        stroke="${isMain ? '#a78bfa' : '#33546b'}" stroke-width="${isMain ? 1.6 : .9}" stroke-opacity=".9"/>`;
-      if (isMain || viewMode === 'pek') {
-        g += `<text class="lbl${isMain ? '' : ' sm'}" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${esc(s.nameEn)}</text>`;
-        g += `<text class="freqlbl" x="${lx.toFixed(1)}" y="${(ly + 11).toFixed(1)}" text-anchor="middle" ${isMain ? '' : 'style="fill:#7fa8c4"'}>${esc((s.freqs[0] || {}).f || '')}</text>`;
+    D.sectors.forEach((s, i) => {
+      const [lx, ly] = pt(centroid(s.pts));
+      g += `<path class="poly" data-kind="sec" data-i="${i}" d="${path(s.pts)}"
+        fill="#a78bfa" fill-opacity=".07" stroke="#6d5fae" stroke-width=".8" stroke-opacity=".8"/>`;
+      if (zc >= 2.1) {
+        g += `<text class="lbl sm" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${esc(s.nameEn)}</text>`;
+        g += `<text class="freqlbl" x="${lx.toFixed(1)}" y="${(ly + 10).toFixed(1)}" text-anchor="middle" style="fill:#b9a8f5">${esc((s.freqs[0] || {}).f || '')}</text>`;
       }
     });
   }
-  // 进近区
-  if (layerOn.tma && D.tma) {
-    const c = centroid(D.tma.pts), [lx, ly] = pt(c);
-    g += `<path class="poly" data-kind="tma" d="${path(D.tma.pts)}" fill="#39d0ff" fill-opacity=".10"
-      stroke="#39d0ff" stroke-width="2" stroke-dasharray="7 4"/>`;
-    g += `<text class="lbl" x="${lx.toFixed(1)}" y="${(ly + 26).toFixed(1)}" text-anchor="middle" fill="#7fe3ff">太原进近 ZBYNAPP</text>`;
-  }
-  // 塔台区
-  if (layerOn.ctr) {
-    (D.ctr || []).forEach((c, i) => {
-      const [lx, ly] = pt(centroid(c.pts));
-      g += `<path class="poly" data-kind="ctr" data-i="${i}" d="${path(c.pts)}" fill="#fb7185" fill-opacity=".14"
-        stroke="#fb7185" stroke-width="1.8"/>`;
-      g += `<text class="lbl sm" x="${lx.toFixed(1)}" y="${(ly - 4).toFixed(1)}" text-anchor="middle" fill="#ffb3c0">塔台 TWR 118.25</text>`;
+  // ---- 进近区 ----
+  if (layerOn.tma) {
+    D.areas.forEach((a, i) => {
+      const sub = a.sub;
+      g += `<path class="poly" data-kind="ap" data-i="${i}" d="${path(a.pts)}"
+        fill="#39d0ff" fill-opacity="${sub ? .05 : .08}" stroke="#39d0ff" stroke-width="${sub ? .8 : 1.4}"
+        stroke-opacity="${sub ? .45 : .8}" stroke-dasharray="${sub ? '3 5' : '7 4'}"/>`;
+      if (zc >= (sub ? 3.2 : 1.6)) {
+        const [lx, ly] = pt(centroid(a.pts));
+        g += `<text class="lbl sm" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" fill="#9fe6ff">${esc(a.nameCn)}</text>`;
+        const f = pf(a.freqs);
+        if (f) g += `<text class="freqlbl" x="${lx.toFixed(1)}" y="${(ly + 10).toFixed(1)}" text-anchor="middle">${esc(f.split(' / ')[0])}</text>`;
+      }
     });
   }
-  // 跑道
-  if (layerOn.rwy) {
-    const [ax, ay] = pt(D.arp);
-    const mPerPx = 1 / proj.scale; // 度/px
-    // 真实几何：真方位 139°，双跑道 3600m，间距 490m，13R 比 13L 东移 1350m
-    const brg = (133 + 5.9) * Math.PI / 180; // 磁 133 + 磁差 5.9W → 真 139
-    const cosLat = Math.cos(D.arp[0] * Math.PI / 180);
-    const degPerM = 1 / 111320;
-    const L = 3600 * degPerM, sep = 490 * degPerM, off = 1350 * degPerM;
-    const dirV = [Math.sin(brg) * L, Math.cos(brg) * L / cosLat]; // 沿 139°
-    const nrm = [Math.cos(brg) * sep, -Math.sin(brg) * sep / cosLat];
-    const pairs = [
-      {d: '13L/31R', cx: 0, cy: 0, col: '#dbe7f1'},
-      {d: '13R/31L', cx: Math.cos(brg) * off, cy: -Math.sin(brg) * off / cosLat, col: '#dbe7f1'}
-    ];
-    pairs.forEach((pr, i) => {
-      const x1 = ax + pt2px(pr.cx - nrm[0] / 2, dirV)[0], y1 = ay + pt2px(pr.cx - nrm[0] / 2, dirV)[1];
-      // 简化：直接用像素长度画
-      const pxPerDeg = proj.scale;
-      const halfL = L / 2 * pxPerDeg;
-      const dx = Math.sin(brg), dy = -Math.cos(brg);
-      // 每条跑道中心（横向偏移）
-      const ox = (i === 0 ? -sep / 2 : off + sep / 2) * pxPerDeg * Math.cos(brg);
-      const oy = (i === 0 ? -sep / 2 : off + sep / 2) * pxPerDeg * Math.sin(brg);
-      const cxp = ax + ox, cyp = ay + oy;
-      const x2 = cxp + dx * halfL, y2 = cyp + dy * halfL;
-      const x3 = cxp - dx * halfL, y3 = cyp - dy * halfL;
-      g += `<line x1="${x3.toFixed(1)}" y1="${y3.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-        stroke="#0b1016" stroke-width="9" stroke-linecap="round"/>`;
-      g += `<line x1="${x3.toFixed(1)}" y1="${y3.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-        stroke="${pr.col}" stroke-width="5" stroke-linecap="round"/>`;
+  // ---- 塔台管制区 ----
+  if (layerOn.twr) {
+    D.ctr.forEach((c, i) => {
+      g += `<path class="poly" data-kind="twr" data-i="${i}" d="${path(c.pts)}" fill="#fb7185" fill-opacity=".10"
+        stroke="#fb7185" stroke-width="1" stroke-opacity=".7"/>`;
+      if (zc >= 3.6) {
+        const [lx, ly] = pt(centroid(c.pts));
+        g += `<text class="lbl sm" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" fill="#ffb3c0">塔台区</text>`;
+      }
     });
-    g += `<circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="2.4" fill="#fb7185"/>`;
-    g += `<text class="lbl" x="${(ax + 14).toFixed(1)}" y="${(ay + 4).toFixed(1)}">武宿 ZBYN</text>`;
   }
-  // 导航台
-  if (layerOn.nav) {
-    const v = (D.navs || []).find(n => n.id === 'TYN');
-    if (v) {
-      const m = /N(\d+)°(\d+\.?\d*)′\s*E(\d+)°(\d+\.?\d*)′/.exec(String(v.lat) + ' ' + String(v.lon));
-      let la = 37.7533, lo = 112.6167;
-      if (m) { la = +m[1] + +m[2] / 60; lo = +m[3] + +m[4] / 60; }
-      const [x, y] = pt([la, lo]);
-      const R = Math.min(proj.w, proj.h) * 0.30;
-      g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R.toFixed(1)}" fill="none" stroke="#39d0ff" stroke-opacity=".18" stroke-dasharray="2 6"/>`;
-      g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(R * 2 / 3).toFixed(1)}" fill="none" stroke="#39d0ff" stroke-opacity=".10" stroke-dasharray="2 6"/>`;
-      g += `<path d="M${(x - 9).toFixed(1)} ${y.toFixed(1)} L${(x + 9).toFixed(1)} ${y.toFixed(1)} M${x.toFixed(1)} ${(y - 9).toFixed(1)} L${x.toFixed(1)} ${(y + 9).toFixed(1)}" stroke="#39d0ff" stroke-width="1.2"/>`;
-      g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#39d0ff"/>`;
-      g += `<text class="lbl" x="${(x + 8).toFixed(1)}" y="${(y - 8).toFixed(1)}" fill="#7fe3ff">TYN 113.10</text>`;
-    }
-  }
-  // 自定义点（扩展数据可加 points: [{name, lat, lon, freq, kind}]）
-  if (Array.isArray(D.points)) {
-    D.points.forEach(p => {
-      const [x, y] = pt([p.lat, p.lon]);
-      const col = p.kind === "NDB" ? "#ffb454" : p.kind === "VOR" ? "#39d0ff" : "#8be9a8";
-      g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="none" stroke="${col}" stroke-width="1.6"/>`;
-      g += `<text class="lbl sm" x="${(x + 7).toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="${col}">${esc(p.name || "")} ${esc(p.freq || "")}</text>`;
+  // ---- 机场 ----
+  if (layerOn.apt) {
+    D.airports.forEach((a, i) => {
+      const [x, y] = pt(a.arp);
+      const big = a.comms.some(c => c.type === 'TWR');
+      g += `<circle class="aptdot" data-kind="apt" data-i="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${big ? 4.2 : 3.2}"
+        fill="#ffd27f" fill-opacity=".95" stroke="#3a2a10" stroke-width="1"/>`;
+      if (zc >= 2.0 || (zc >= 1.4 && a.iata)) {
+        g += `<text class="apt" x="${(x + 6).toFixed(1)}" y="${(y + 3.5).toFixed(1)}">${esc(a.nameCn || a.id)}</text>`;
+      }
     });
   }
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.innerHTML = `<g id="world">${g}</g>`;
+  applyView();
   bindPicks();
 }
-let zoom = 1;
-function pt2px(){ return [0, 0]; }
 
 // ---------- interaction ----------
 let drag = null;
 const svgEl = () => document.getElementById('svg');
 function bindPicks(){
-  svgEl().querySelectorAll('.poly').forEach(el => {
+  svgEl().querySelectorAll('[data-kind]').forEach(el => {
     el.addEventListener('click', ev => {
       if (drag && drag.moved) return;
       ev.stopPropagation();
-      const k = el.dataset.kind;
-      if (k === 'tma') showTma();
-      else if (k === 'ctr') showCtr(+el.dataset.i);
-      else showSector(+el.dataset.i);
+      const k = el.dataset.kind, i = +el.dataset.i;
+      if (k === 'apr') return;
+      if (k === 'apt') return showAirport(i);
+      if (k === 'sec') return showSector(i);
+      if (k === 'ap') return showArea(i);
+      if (k === 'twr') return showTower(i);
     });
   });
 }
@@ -318,27 +317,81 @@ function fr(k, f, tag, ex){
   return `<div class="fr" data-f="${esc(f)}"><b>${esc(f)}</b><div class="k">${esc(k)}</div>
     ${tag ? `<span class="tag">${esc(tag)}</span>` : ''}${ex ? `<div class="ex">${esc(ex)}</div>` : ''}</div>`;
 }
-function showTma(){
-  const t = D.tma;
-  showSheet('太原进近管制区 ZBYNAPP', `垂直范围 ${esc(t.vertical)} · 水平边界见图中虚线`, 
-    fr('APP01 主用', '119.200', '进近', '备用 125.550') +
-    fr('APP02 主用', '119.550', '进近', '备用 125.550') +
-    fr('备用', '125.550', '', 'APP01/02 共用备份') +
-    `<div style="color:#8ba0b5;font-size:11px;margin-top:10px">塔台 118.250 · 地面 121.800 · 放行 121.925 · 机坪 121.675</div>`);
+const FREQ_TAG = {TWR:'塔台', GND:'地面', DEL:'放行', Delivery:'放行', APN:'机坪', RAMP:'机坪', ATIS:'通播', APP:'进近', ACC:'区调', CTR:'管制', FIS:'情报', EMG:'应急', 'OP-CTL':'管制', AOC:'签派'};
+function showAirport(i){
+  const a = D.airports[i];
+  if (!a) return;
+  const typeLabel = t => FREQ_TAG[t] || t || '通信';
+  let body = '';
+  if (a.comms.length) {
+    body += `<div style="color:#9fd4ea;font-size:11px;margin:2px 0 4px">通信设施 AD 2.18</div>`;
+    body += a.comms.map(c => fr(c.f, `${typeLabel(c.type)} ${c.cn || c.en || ''}`.trim(),
+      typeLabel(c.type), [c.alt ? '备 ' + c.alt : '', c.time, c.note].filter(Boolean).join(' · '))).join('');
+  }
+  // 进近区按多边形归属（浦东/虹桥共用上海进近等），不只看 ICAO 前缀
+  const parents = D.areas.filter(x => !x.sub && inPoly(a.arp, x.pts));
+  const apIcaos = new Set([a.id, ...parents.map(x => x.icao)]);
+  const apps = D.areas.filter(x => x.freqs.length && apIcaos.has(x.icao));
+  if (apps.length) {
+    body += `<div style="color:#9fd4ea;font-size:11px;margin:12px 0 4px">进近管制区 ENR 2.1.5</div>`;
+    // 同名扇区（如 AP01 东/西）合并频率
+    const groups = new Map();
+    for (const x of apps) {
+      const key = x.sub ? x.nameCn.replace(/\(.*$/, '').trim() : (x.nameCn || 'APP');
+      const g = groups.get(key) || { name: key, call: x.call, vertical: x.vertical, freqs: new Set(), n: 0, alts: new Set() };
+      x.freqs.forEach(f => g.freqs.add(f.f));
+      g.n++;
+      if (x.vertical) g.vertical = g.vertical || x.vertical;
+      groups.set(key, g);
+    }
+    body += [...groups.values()].map(g =>
+      fr([...g.freqs].join(' / '), `${g.name}${g.n > 1 ? '（' + g.n + ' 个扇区）' : ''} ${g.call || ''}`.trim(),
+        g.n > 1 ? '扇区' : '进近', g.vertical ? vfmt(g.vertical) : '')).join('');
+  }
+  const near = D.sectors.filter(s => inPoly(a.arp, s.pts));
+  if (near.length) {
+    body += `<div style="color:#9fd4ea;font-size:11px;margin:12px 0 4px">所在区调扇区 ENR 2.1.3</div>`;
+    body += near.map(s => fr(pf(s.freqs), `${s.call} ${s.nameEn}`, s.unit || '', vfmt(s.vertical))).join('');
+  }
+  if (a.navs.length) {
+    body += `<div style="color:#9fd4ea;font-size:11px;margin:12px 0 4px">导航设施 AD 2.19</div>`;
+    body += a.navs.map(n => fr(n.f, `${n.id} ${n.type || ''} ${n.cn || ''}`.trim(), '', [n.rwy ? 'RWY ' + n.rwy : '', n.loc].filter(Boolean).join(' · '))).join('');
+  }
+  const sub = [a.id, a.nameEn, a.arpText ? 'ARP ' + a.arpText : '', a.elev ? '标高 ' + a.elev : '', a.magvar ? '磁差 ' + a.magvar : '']
+    .filter(Boolean).map(esc).join(' · ');
+  showSheet(`${a.nameCn} ${a.iata ? '（' + a.iata + '）' : ''}`, sub, body || '<div style="color:#8ba0b5;font-size:12px">本场未公布通信频率</div>');
 }
-function showCtr(i){
-  const c = D.ctr[i];
-  showSheet(c.nameCn || c.nameEn, `垂直 ${esc(c.vertical)}`,
-    fr('塔台 TWR', '118.250', 'TWR', '备用 124.350') +
-    fr('地面 GND', '121.800', 'GND', '') +
-    fr('放行 DEL', '121.925', 'DEL', '工作时间 HO') +
-    fr('机坪 APN', '121.675', 'APN', '') +
-    fr('通播 ATIS', '126.450', 'ATIS', 'H24'));
+function showArea(i){
+  const a = D.areas[i];
+  if (!a) return;
+  let body = a.freqs.length ? a.freqs.map(f => fr(f.f,
+    `${f.rank === 'PRIMARY' ? '主用' : '备用'}${f.open ? ' · ' + f.open : ''}${f.note ? ' · ' + f.note : ''}`,
+    f.rank === 'PRIMARY' ? '主' : '备', '')).join('')
+    : `<div style="color:#8ba0b5;font-size:12px;padding:8px 0">该进近区未单列频率（频率见其 APxx 扇区或本场 AD 2.18）</div>`;
+  const kids = D.areas.filter(x => x.icao === a.icao && x.sub && x.freqs.length);
+  if (!a.sub && kids.length) {
+    body += `<div style="color:#9fd4ea;font-size:11px;margin:12px 0 4px">扇区频率</div>`;
+    body += kids.map(x => fr(pf(x.freqs), x.nameCn, '扇区', vfmt(x.vertical))).join('');
+  }
+  showSheet(`${a.nameCn}`, [a.nameEn, a.loc, a.call, a.unit, a.vertical ? vfmt(a.vertical) : ''].filter(Boolean).map(esc).join(' · '), body);
 }
 function showSector(i){
   const s = D.sectors[i];
-  const rows = s.freqs.map(f => fr(f.f, `${f.rank === 'PRIMARY' ? '主用' : '备用'} ${f.open ? '· ' + f.open : ''}`, f.rank === 'PRIMARY' ? '主' : '备', '')).join('');
-  showSheet(`${s.nameCn} ${s.nameEn}`, `${esc(s.call)} · ${esc(s.unit)} · 垂直 ${esc(vfmt(s.vertical))}`, rows);
+  if (!s) return;
+  const rows = s.freqs.map(f => fr(f.f, `${f.rank === 'PRIMARY' ? '主用' : '备用'}${f.open ? ' · ' + f.open : ''}${f.note ? ' · ' + f.note : ''}`,
+    f.rank === 'PRIMARY' ? '主' : '备', '')).join('');
+  showSheet(`${s.nameCn} ${s.nameEn}`, [s.call, s.unit, s.vertical ? '垂直 ' + vfmt(s.vertical) : ''].filter(Boolean).map(esc).join(' · '), rows);
+}
+function showTower(i){
+  const c = D.ctr[i];
+  if (!c) return;
+  const isTower = /tower|塔台/i.test(c.nameCn + ' ' + c.nameEn);
+  const a = D.airports.find(x => x.id === c.icao);
+  const rows = (isTower && a) ? a.comms.map(x => fr(x.f, `${FREQ_TAG[x.type] || x.type} ${x.cn || ''}`.trim(), FREQ_TAG[x.type] || x.type, x.time)).join('') : '';
+  const head = isTower
+    ? `<div style="color:#9fd4ea;font-size:11px;margin:2px 0 4px">${esc(c.icao)} 本场通信 AD 2.18</div>`
+    : `<div style="color:#8ba0b5;font-size:12px;padding:6px 0">该区域为 AIP 公布的特殊空域（非管制通信区），无对应频率。${a ? '本场频率请点机场 ' + esc(c.icao) + '。' : ''}</div>`;
+  showSheet(c.nameCn, [c.icao, c.vertical ? '垂直 ' + vfmt(c.vertical) : ''].filter(Boolean).map(esc).join(' · '), head + rows);
 }
 function copy(txt){
   if (!txt) return;
@@ -351,7 +404,6 @@ function copy(txt){
 // pan / zoom
 svgEl().addEventListener('pointerdown', e => {
   drag = {x: e.clientX, y: e.clientY, tx: proj.tx, ty: proj.ty, moved: false};
-  svgEl().setPointerCapture(e.pointerId);
 });
 svgEl().addEventListener('pointermove', e => {
   if (!drag) return;
@@ -367,16 +419,11 @@ function applyView(){
   if (!g) return;
   g.setAttribute('transform', `translate(${(proj.ox * (1 - zoom) + proj.tx).toFixed(1)},${(proj.oy * (1 - zoom) + proj.ty).toFixed(1)}) scale(${zoom})`);
 }
-document.getElementById('zin').onclick = () => { zoom = Math.min(6, zoom * 1.35); applyView(); };
-document.getElementById('zout').onclick = () => { zoom = Math.max(.55, zoom / 1.35); applyView(); };
-document.getElementById('zfit').onclick = () => { render(); };
+document.getElementById('zin').onclick = () => { zoom = Math.min(9, zoom * 1.4); render(true); };
+document.getElementById('zout').onclick = () => { zoom = Math.max(.6, zoom / 1.4); render(true); };
+document.getElementById('zfit').onclick = () => { focus = null; render(); };
 
 document.querySelectorAll('#hud .chip').forEach(c => c.onclick = () => {
-  if (c.dataset.view) {
-    viewMode = viewMode === 'pek' ? 'tyn' : 'pek';
-    document.querySelectorAll('#hud .chip[data-view]').forEach(x => x.classList.toggle('on', viewMode === 'pek'));
-    render(); return;
-  }
   const k = c.dataset.layer; layerOn[k] = !layerOn[k];
   c.classList.toggle('on', layerOn[k]); render();
 });
@@ -390,61 +437,82 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   tbl.classList.toggle('show', b.dataset.tab === 'tbl');
   src.classList.toggle('show', b.dataset.tab === 'src');
   if (b.dataset.tab !== 'map') document.getElementById('sheet').classList.remove('up');
+  if (b.dataset.tab === 'map') render();
 });
 
-// ---------- list ----------
+// ---------- 频率总表 ----------
 function buildTable(){
+  const q = (document.getElementById('q').value || '').trim().toLowerCase();
+  const hit = (...v) => !q || v.some(x => String(x == null ? '' : x).toLowerCase().includes(q));
+  const row = (nm, f, ex, sub) => `<div class="row" data-f="${esc(f)}" ${sub ? `data-apt="${esc(sub)}"` : ''}>
+    <div class="nm">${esc(nm)}</div><div class="fv">${esc(f)}</div><div class="ex">${esc(ex || '')}</div></div>`;
   const g = (t, rows) => `<div class="grp"><h4>${t}</h4>${rows}</div>`;
-  const r = (n, f, ex) => `<div class="row" data-f="${esc(f)}"><div class="nm">${esc(n)}</div><div class="fv">${esc(f)}</div><div class="ex">${esc(ex || '')}</div></div>`;
-  const main = D.sectors.filter(s => s.tyn);
-  const others = D.sectors.filter(s => !s.tyn);
-  let h = '';
-  h += g('塔台 / 地面 / 放行（武宿）',
-    r('塔台 TWR', '118.250', '备用 124.350') +
-    r('塔台备用', '124.350', '') +
-    r('地面 GND', '121.800', 'H24') +
-    r('放行 DEL', '121.925', '工作时间 HO') +
-    r('机坪 APN', '121.675', 'H24') +
-    r('通播 ATIS', '126.450', 'H24') +
-    r('应急 EMG', '121.500', '国际遇险应急'));
-  h += g('进近（太原进近管制区 GND–5100m）',
-    r('APP01', '119.200', '主用 H24 · 备 125.550') +
-    r('APP02', '119.550', '主用 H24 · 备 125.550') +
-    r('进近备用', '125.550', 'APP01/02 共用'));
-  h += g('区调 · 太原区域管制室（北京区域 ZBPE）',
-    main.map(s => r(`${s.nameEn} ${s.nameCn}`, s.freqs[0].f, '备 ' + (s.freqs[1] || {}).f + ' · ' + vfmt(s.vertical))).join('') || r('AR33', '120.550', ''));
-  h += g('导航设施（VOR / ILS）',
-    r('TYN VOR/DME', '113.100', 'N37°45.2′ E112°37.0′ · H24') +
-    r('ICC LOC 13L', '110.900', 'ILS CAT I') +
-    r('ICC GP 13L', '330.800', '下滑台 UHF') +
-    r('IBB LOC 31R', '109.300', 'ILS CAT I') +
-    r('IBB GP 31R', '332.000', '') +
-    r('INP LOC 13R', '109.700', 'ILS CAT I') +
-    r('INP GP 13R', '333.200', '') +
-    r('IMK LOC 31L', '108.550', 'ILS CAT III') +
-    r('IMK GP 31L', '329.750', '') +
-    r('IM 31L', '75.000', '指点标 MHz'));
-  if (others.length) h += g('区调 · 北京区域管制中心（ZBPE，其余 ' + others.length + ' 个扇区）',
-    others.map(s => r(`${s.call} ${s.nameEn}`, s.freqs[0].f, '备 ' + (s.freqs[1] || {}).f + ' · ' + vfmt(s.vertical))).join(''));
-  document.getElementById('listTbl').innerHTML = h +
-    `<div class="foot">点任意一行复制频率。含北京管制区（ZBPE）全部 42 个区调扇区；太原区域管制室为 AR33/34/35。数值单位 MHz。</div>`;
-  document.querySelectorAll('#listTbl .row').forEach(el => el.onclick = () => copy(el.dataset.f));
+  let h = '', nApt = 0, nSec = 0, nApp = 0;
+
+  // 机场
+  let aptRows = '';
+  for (const a of D.airports) {
+    const rows = a.comms.filter(c => hit(a.id, a.nameCn, a.nameEn, c.f, c.type, c.cn, c.en));
+    if (!rows.length) continue;
+    nApt++;
+    aptRows += `<div class="row" data-apt="${esc(a.id)}" style="background:#0f1821"><div class="nm" style="width:auto;flex:0 0 auto;color:#9fd4ea;font-weight:700">${esc(a.id)}</div><div class="fv" style="font-size:13px">${esc(a.nameCn)}</div><div class="ex">${esc(a.nameEn)}</div></div>`;
+    aptRows += rows.map(c => row(`${FREQ_TAG[c.type] || c.type} ${c.cn || ''}`.trim(), c.f,
+      [c.alt ? '备 ' + c.alt : '', c.time, c.note].filter(Boolean).join(' · '), a.id)).join('');
+  }
+  if (aptRows) h += g(`机场通信 · 塔台/地面/放行/机坪/通播（${nApt} 个机场）`, aptRows);
+
+  // 进近
+  let appRows = '';
+  for (const a of D.areas) {
+    if (!a.freqs.length) continue;
+    if (!hit(a.nameCn, a.nameEn, a.loc, a.call, a.unit)) continue;
+    nApp++;
+    appRows += row(`${a.nameCn} ${a.call || ''}`.trim(), pf(a.freqs), [a.loc, a.vertical ? vfmt(a.vertical) : ''].filter(Boolean).join(' · '));
+  }
+  if (appRows) h += g(`进近管制区 / 扇区 ENR 2.1.5（${nApp} 个）`, appRows);
+
+  // 区调
+  let secRows = '';
+  for (const s of D.sectors) {
+    if (!hit(s.nameEn, s.nameCn, s.call, s.unit)) continue;
+    nSec++;
+    secRows += row(`${s.call} ${s.nameEn}`, pf(s.freqs), [s.unit, s.vertical ? vfmt(s.vertical) : ''].filter(Boolean).join(' · '));
+  }
+  if (secRows) h += g(`区域管制扇区 ENR 2.1.3（${nSec} 个）`, secRows);
+
+  if (!h) h = `<div class="grp"><h4>没有匹配</h4><div class="row" style="color:#8ba0b5">换个关键词，例如「太原」「ZBAA」「118.25」</div></div>`;
+  document.getElementById('tblBody').innerHTML = h +
+    `<div class="foot">点任意一行复制频率。数据来自中国民航 eAIP ${esc(D.meta && D.meta.cycle || D.cycle || '')}，单位 MHz。</div>`;
+  document.getElementById('qinfo').textContent = q ? `匹配：机场 ${nApt} · 进近 ${nApp} · 区调 ${nSec}` : '';
+  document.querySelectorAll('#tblBody .row').forEach(el => {
+    el.onclick = () => {
+      if (el.dataset.apt) {
+        const a = D.airports.findIndex(x => x.id === el.dataset.apt);
+        if (a >= 0) { focus = D.airports[a].id; document.querySelector('#tabs .on') && document.querySelectorAll('#tabs button')[0].click(); return; }
+      }
+      copy(el.dataset.f);
+    };
+  });
 }
 
 function buildSrc(){
+  const m = D.meta || {};
   document.getElementById('listSrc').innerHTML = `
   <div class="grp"><h4>数据来源与版本</h4>
-    <div class="row"><div class="nm" style="width:auto;flex:1">数据包</div><div class="ex" style="max-width:60%">EAIP 2026-12 (V1.3)</div></div>
-    <div class="row"><div class="nm" style="width:auto;flex:1">生效 / 失效</div><div class="ex" style="max-width:60%">2026-11-26 00:00 / 2026-12-24 00:00 (北京时间)</div></div>
-    <div class="row"><div class="nm" style="width:auto;flex:1">对应</div><div class="ex" style="max-width:60%">2611/12 期（NAIP 第 12 期 / AIRAC 2612）</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">数据包</div><div class="ex" style="max-width:62%">${esc(m.cycle || D.cycle || '')}</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">生效 / 失效</div><div class="ex" style="max-width:62%">${esc(m.effective || D.effective || '')} / ${esc(m.nextEffective || D.nextEffective || '')}（北京时间）</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">覆盖范围</div><div class="ex" style="max-width:62%">${D.airports.length} 个机场 · ${D.areas.filter(a => a.freqs.length).length} 个进近区/扇区 · ${D.sectors.length} 个区调扇区 · ${D.ctr.length} 个塔台管制区</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">频率条数</div><div class="ex" style="max-width:62%">${D.airports.reduce((s, a) => s + a.comms.length, 0)} 条机场通信 · ${D.sectors.reduce((s, x) => s + x.freqs.length, 0)} 条区调 · ${D.areas.reduce((s, x) => s + x.freqs.length, 0)} 条进近</div></div>
   </div>
   <div class="grp"><h4>取用的 AIP 章节</h4>
-    <div class="row"><div class="nm" style="width:auto;flex:1">AD 2 ZBYN</div><div class="ex" style="max-width:60%">2.2 机场资料 / 2.12 跑道 / 2.17 ATS 空域 / 2.18 通信设施 / 2.19 导航设施</div></div>
-    <div class="row"><div class="nm" style="width:auto;flex:1">ENR 2.1.5</div><div class="ex" style="max-width:60%">终端/进近管制区（太原进近 10 点边界，GND–5100m）</div></div>
-    <div class="row"><div class="nm" style="width:auto;flex:1">ENR 2.1.3</div><div class="ex" style="max-width:60%">区域管制区扇区（AR33/AR34/AR35 太原区域管制室）</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">AD 2.18</div><div class="ex" style="max-width:62%">机场通信设施：塔台、地面、放行、机坪、通播、进近</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">AD 2.19 / 2.12</div><div class="ex" style="max-width:62%">导航设施（VOR/DME/ILS 等）与跑道</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">AD 2.17</div><div class="ex" style="max-width:62%">塔台管制区等 ATS 空域边界</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">ENR 2.1.5</div><div class="ex" style="max-width:62%">进近（终端）管制区与 APxx 扇区频率</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">ENR 2.1.3</div><div class="ex" style="max-width:62%">区域管制区扇区主备频率（全国 ACC）</div></div>
   </div>
   <div class="foot">
-    <b>关于精度：</b>边界点按 AIP 原文 DDMMSS 换算，图上为等距圆柱投影示意，比例与真实地理投影有差异；跑道按 3600×45 m、磁方位 133°、磁差 5°53′W 绘制，两条跑道中心线间距 490 m、13R 相对 13L 东移 1350 m。<br><br>
+    <b>关于精度：</b>边界点按 AIP 原文 DDMMSS 换算，图上为等距圆柱投影示意，比例与真实地理投影有差异；扇区边界密集处缩放后查看更清楚。<br><br>
     <b>关于用途：</b>本页由公开可得的中国民航 eAIP 数据整理，供模拟飞行、学习与资料核对使用。真实飞行必须以现行有效 AIP、NAIP 及管制指令为准；ILS 下滑台（GP）与指点标频率为机载接收频率，不可用于通话。<br><br>
     <b>未包含：</b>二次雷达/ADS-B、D-ATIS 数据链、军用、通航临时频率，以及未在 AIP 公布的管制移交/内部通信频率。
   </div>`;
@@ -452,7 +520,7 @@ function buildSrc(){
 
 // ---------- packs ----------
 const IS_APP = !!(window.DSHApp && window.DSHApp.version());
-const LSK = "taiyuan-airspace.packs.v1";
+const LSK = "skywave.packs.v2";
 let PACKS = [];
 const EMB = window.__EMBEDDED_DATA__ || null;
 
@@ -461,19 +529,23 @@ function loadPacks(){
   try { extra = JSON.parse(localStorage.getItem(LSK) || "[]") || []; } catch(e) { extra = []; }
   PACKS = [].concat(EMB ? [EMB] : [], extra);
 }
-function packLabel(p, i){
+function packLabel(p){
   const m = p.meta || p;
-  const nm = (p.site && p.site.nameCn) || p.name || "数据集";
+  const nm = m.national ? '全国' : ((p.site && p.site.nameCn) || p.name || "数据集");
   const cy = m.cycle || p.cycle || "";
-  return `${nm}${cy ? " · " + cy : ""}`;
+  const n = p.airports ? p.airports.length : 0;
+  return `${nm}${n ? ' · ' + n + ' 机场' : ''}${cy ? " · " + cy : ""}`;
 }
 function fillSelect(){
   const s = document.getElementById("packSel");
-  s.innerHTML = PACKS.map((p, i) => `<option value="${i}">${esc(packLabel(p, i))}</option>`).join("");
+  s.innerHTML = PACKS.map((p, i) => `<option value="${i}">${esc(packLabel(p))}</option>`).join("");
 }
 function usePack(i){
   D = PACKS[i]; if (!D) return;
-  document.getElementById("arpTop").textContent = "ARP " + (D.arpText || "");
+  focus = null;
+  document.getElementById("cycBadge").textContent = (D.meta && D.meta.cycle) || D.cycle || '';
+  document.getElementById("effTxt").textContent = '生效 ' + ((D.meta && D.meta.effective) || D.effective || '');
+  document.getElementById("statTxt").textContent = D.airports ? `${D.airports.length} 机场 · ${D.sectors.length} 区调扇区 · ${D.areas.filter(a => a.freqs.length).length} 进近扇区` : '';
   document.getElementById("packSel").value = String(i);
   document.getElementById("sheet").classList.remove("up");
   buildTable(); buildSrc(); render();
@@ -491,7 +563,7 @@ document.getElementById("fileIn").onchange = e => {
     try {
       const j = JSON.parse(r.result);
       const arr = Array.isArray(j) ? j : (j.packs || [j]);
-      arr.forEach(p => { if (!p || !p.arp) throw new Error("缺少 arp 字段"); PACKS.push(p); });
+      arr.forEach(p => { if (!p || !p.airports || !p.sectors) throw new Error("需要全国格式（含 airports / sectors）"); PACKS.push(p); });
       saveExtra(); fillSelect(); usePack(PACKS.length - arr.length);
     } catch (err) { alert("导入失败：" + err.message); }
   };
@@ -500,38 +572,20 @@ document.getElementById("fileIn").onchange = e => {
 };
 if (IS_APP) { document.getElementById("expBtn").style.display = "none"; }
 document.getElementById("expBtn").onclick = () => {
-  const blob = new Blob([JSON.stringify(D, null, 1)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(D)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = ((D.site && D.site.id) || "airspace") + "-data.json";
+  a.download = "skywave-cn-data.json";
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
 };
-
-// 桌面版：读取程序目录 data/ 下的扩展数据包（浏览器直接打开时该请求会失败，忽略即可）
-async function loadFolderPacks(){
-  try {
-    const r = await fetch("packs.json", { cache: "no-store" });
-    if (!r.ok) return;
-    const arr = await r.json();
-    if (!Array.isArray(arr) || !arr.length) return;
-    const key = p => ((p.site && p.site.id) || "") + "|" + ((p.meta && p.meta.cycle) || p.cycle || "");
-    const have = new Set(PACKS.map(key));
-    let added = 0;
-    arr.forEach(p => { if (p && p.arp && !have.has(key(p))) { PACKS.push(p); added++; } });
-    if (added) { fillSelect(); usePack(PACKS.length - 1); }
-  } catch (e) { /* file:// 模式忽略 */ }
-}
+document.getElementById("q").addEventListener("input", buildTable);
 
 // ---------- boot ----------
 loadPacks();
-if (PACKS.length) {
-  fillSelect(); usePack(0);
-} else {
-  fetch("data.json").then(r => r.json()).then(d => {
-    PACKS = [d]; fillSelect(); usePack(0);
-  }).catch(e => {
-    document.getElementById("map").innerHTML = '<div style="padding:20px;color:#f88">数据加载失败: ' + e.message + '</div>';
-  });
+if (PACKS.length) { fillSelect(); usePack(0); }
+else {
+  fetch("data/CN.json").then(r => r.json()).then(d => { PACKS = [d]; fillSelect(); usePack(0); })
+    .catch(e => { document.getElementById("map").innerHTML = '<div style="padding:20px;color:#f88">数据加载失败: ' + e.message + '</div>'; });
 }
 window.addEventListener("resize", () => { if (D) render(); });
 </script>

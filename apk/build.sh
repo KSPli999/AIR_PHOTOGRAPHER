@@ -12,7 +12,7 @@ echo "[1/6] aapt 打包资源"
 
 echo "[2/6] javac"
 "$TC/bin/javac" -nowarn -source 8 -target 8 -bootclasspath "$AJ" -classpath "$AJ" \
-  -d build/classes src/app/airspace/MainActivity.java
+  -d build/classes src/app/dsh/airspace/MainActivity.java
 
 echo "[3/6] d8 -> dex"
 "$JAVA" -cp "$TC/share/java/d8.jar" com.android.tools.r8.D8 --lib "$AJ" --min-api 23 \
