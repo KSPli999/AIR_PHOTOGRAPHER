@@ -31,10 +31,14 @@ for (const a of D.airports) {
   const [x, y] = pt(a.arp);
   g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${a.iata ? 3.6 : 2.6}" fill="#ffd27f" stroke="#3a2a10" stroke-width=".8"/>`;
 }
-D.airports.filter((a) => a.iata).forEach((a) => {
+// 简单避让：标签过近就跳过
+const placed = [];
+for (const a of D.airports.filter((x) => x.iata)) {
   const [x, y] = pt(a.arp);
+  if (placed.some(([px, py]) => Math.abs(px - x) < 52 && Math.abs(py - y) < 13)) continue;
+  placed.push([x, y]);
   g += `<text x="${(x + 6).toFixed(1)}" y="${(y + 3.4).toFixed(1)}" font-size="11" fill="#ffe0a3" font-weight="600">${a.id}</text>`;
-});
+}
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
 <defs><radialGradient id="bg" cx="50%" cy="0" r="90%"><stop offset="0" stop-color="#0e1720"/><stop offset="1" stop-color="#080d12"/></radialGradient></defs>

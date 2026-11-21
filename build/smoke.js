@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'src/index.html'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', process.argv[2] || 'src/index.html'), 'utf8');
 const code = html.match(/<script>([\s\S]*)<\/script>/)[1];
 
 const els = {};
