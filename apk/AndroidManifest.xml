@@ -2,11 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.dsh.airspace"
     android:versionCode="1"
-    android:versionName="2026.12.2">
+    android:versionName="2026.12.3">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34"/>
     <application
-        android:label="快门波段"
+        android:label="天际电波"
         android:icon="@mipmap/ic_launcher"
         android:hardwareAccelerated="true"
         android:allowBackup="true"
