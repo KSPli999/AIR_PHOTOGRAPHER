@@ -121,13 +121,15 @@
       <div class="chip on" data-layer="tma">进近</div>
       <div class="chip on" data-layer="twr">塔台区</div>
       <div class="chip on" data-layer="apt">机场</div>
+      <div class="chip on" id="baseChip">底图 卫星</div>
     </div>
     <div id="legend">
       <div><i style="background:#a78bfa"></i>区域管制扇区</div>
       <div><i style="background:#39d0ff"></i>进近管制区</div>
       <div><i style="background:#fb7185"></i>塔台管制区</div>
       <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
-      <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大后显示扇区名与频率</div>
+      <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大到机场可见跑道</div>
+      <div id="baseAttr" style="color:#4f6475"></div>
     </div>
     <div id="zoom">
       <button id="zin">+</button><button id="zout">−</button><button id="zfit">⤢</button>
@@ -195,6 +197,58 @@ function viewBounds(){
   const wy = s => proj.oy + (s - proj.oy - proj.ty) / z;
   return {x0: wx(0), x1: wx(proj.w), y0: wy(0), y1: wy(proj.h)};
 }
+// ---------- 在线底图（卫星 / OSM 瓦片） ----------
+// 只在放大到城市级以后才铺瓦片；没网或加载失败时保持矢量底图，不影响使用
+const TILE_MIN = 12, TILE_MAX = 18;
+const TILE_MODES = {
+  sat: {
+    attr: '影像 © Esri, Maxar, Earthstar Geographics',
+    url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
+  },
+  osm: {
+    attr: '底图 © OpenStreetMap contributors',
+    url: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
+  }
+};
+let tilesOn = false;
+function tileLayer(){
+  tilesOn = false;
+  const mode = TILE_MODES[baseMode];
+  if (!mode) return '';
+  const z = zoom;
+  const mpp = 111320 / (proj.scale * z);                       // 当前米/屏幕像素
+  let tz = Math.round(Math.log2(156543.03392 * Math.cos(proj.lat0 * Math.PI / 180) / mpp));
+  tz = Math.max(1, Math.min(TILE_MAX, tz));
+  if (tz < TILE_MIN) return '';
+  const vb = viewBounds();
+  const lonOf = W => proj.lon0 + (W - proj.ox) / (proj.cos * proj.scale);
+  const latOf = W => proj.lat0 - (W - proj.oy) / proj.scale;
+  const n = 2 ** tz;
+  const mercY = lat => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
+  let tx0 = Math.floor((lonOf(vb.x0) + 180) / 360 * n), tx1 = Math.floor((lonOf(vb.x1) + 180) / 360 * n);
+  let ty0 = Math.floor(mercY(latOf(vb.y0))), ty1 = Math.floor(mercY(latOf(vb.y1)));
+  if (tx0 > tx1) { const t = tx0; tx0 = tx1; tx1 = t; }
+  if (ty0 > ty1) { const t = ty0; ty0 = ty1; ty1 = t; }
+  tx0 = Math.max(0, tx0); tx1 = Math.min(n - 1, tx1);
+  ty0 = Math.max(0, ty0); ty1 = Math.min(n - 1, ty1);
+  if (tx1 < tx0 || ty1 < ty0) return '';
+  if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 80) return '';       // 安全阀，正常不会触发
+  let out = '';
+  const tileLat = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+  for (let ty = ty0; ty <= ty1; ty++) {
+    for (let tx = tx0; tx <= tx1; tx++) {
+      const lonL = tx / n * 360 - 180, lonR = (tx + 1) / n * 360 - 180;
+      const latT = tileLat(ty), latB = tileLat(ty + 1);
+      const [ax, ay] = pt([latT, lonL]);
+      const [bx, by] = pt([latB, lonR]);
+      out += `<image href="${mode.url(tz, tx, ty)}" x="${(ax - .5).toFixed(1)}" y="${(ay - .5).toFixed(1)}"
+        width="${(bx - ax + 1).toFixed(1)}" height="${(by - ay + 1).toFixed(1)}"
+        preserveAspectRatio="none" style="pointer-events:none"/>`;
+    }
+  }
+  tilesOn = true;
+  return out;
+}
 const path = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }).join(' ') + ' Z';
 // 一个空域可能有多个环（不同跑道构型 / 多块区域）
 const ringsOf = o => o.rings || [o.pts];
@@ -235,6 +289,11 @@ function pf(packArr){
 // ---------- state ----------
 const layerOn = {acc: true, tma: true, twr: true, apt: true};
 let zoom = 1, focus = null;
+// 底图模式：卫星 / OSM / 关，记住上次选择
+const BASE_KEY = 'skywave.base';
+let baseMode = 'sat';
+try { baseMode = localStorage.getItem(BASE_KEY) || 'sat'; } catch (e) {}
+if (!TILE_MODES[baseMode]) baseMode = 'sat';
 
 // ---------- render ----------
 function render(keepView){
@@ -282,6 +341,10 @@ function render(keepView){
     g += `<path d="${D.border.map(r => path(r)).join(' ')}" fill="#0c1a25" fill-opacity=".9"
       stroke="#31586f" stroke-width="${bw}" stroke-opacity=".85"/>`;
   }
+  // ---- 在线底图：放大后铺卫星/OSM 瓦片，能看到跑道与滑行道 ----
+  g += tileLayer();
+  const attrEl = document.getElementById('baseAttr');
+  if (attrEl) attrEl.textContent = tilesOn ? TILE_MODES[baseMode].attr : '';
   // ---- 情报区边界 ----
   (D.fir || []).forEach((f) => {
     g += `<path d="${pathAll(f)}" fill="none" stroke="#5b9dc4" stroke-opacity=".28"
@@ -514,7 +577,7 @@ function copy(txt){
 }
 
 // pan / pinch zoom / 边界限制
-const ZMIN = .7, ZMAX = 9;
+const ZMIN = .7, ZMAX = 12000;
 let drag = null, pinch = null, suppressClick = false;
 const pointers = new Map();
 function localXY(e){
@@ -625,10 +688,26 @@ document.getElementById('zin').onclick = () => { zoom = clampZoom(zoom * 1.4); r
 document.getElementById('zout').onclick = () => { zoom = clampZoom(zoom / 1.4); render(true); };
 document.getElementById('zfit').onclick = () => { focus = null; render(); };
 
-document.querySelectorAll('#hud .chip').forEach(c => c.onclick = () => {
-  const k = c.dataset.layer; layerOn[k] = !layerOn[k];
-  c.classList.toggle('on', layerOn[k]); render(true);
+document.querySelectorAll('#hud .chip').forEach(c => {
+  if (c.id === 'baseChip') return;
+  c.onclick = () => {
+    const k = c.dataset.layer; layerOn[k] = !layerOn[k];
+    c.classList.toggle('on', layerOn[k]); render(true);
+  };
 });
+// 底图循环：卫星 → OSM → 关
+function updateBaseChip(){
+  const c = document.getElementById('baseChip');
+  if (!c) return;
+  c.textContent = baseMode === 'sat' ? '底图 卫星' : baseMode === 'osm' ? '底图 OSM' : '底图 关';
+  c.classList.toggle('on', !!TILE_MODES[baseMode]);
+}
+document.getElementById('baseChip').onclick = () => {
+  baseMode = baseMode === 'sat' ? 'osm' : baseMode === 'osm' ? 'off' : 'sat';
+  try { localStorage.setItem(BASE_KEY, baseMode); } catch (e) {}
+  updateBaseChip(); render(true);
+};
+updateBaseChip();
 
 // tabs
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
@@ -690,7 +769,12 @@ function buildTable(){
     el.onclick = () => {
       if (el.dataset.apt) {
         const a = D.airports.findIndex(x => x.id === el.dataset.apt);
-        if (a >= 0) { focus = D.airports[a].id; document.querySelector('#tabs .on') && document.querySelectorAll('#tabs button')[0].click(); return; }
+        if (a >= 0) {
+          focus = D.airports[a].id;
+          document.querySelectorAll('#tabs button')[0].click();
+          zoom = 30; render(true);   // 直接落到机场尺度，卫星底图能看清跑道
+          return;
+        }
       }
       copy(el.dataset.f);
     };
@@ -705,6 +789,7 @@ function buildSrc(){
     <div class="row"><div class="nm" style="width:auto;flex:1">生效 / 失效</div><div class="ex" style="max-width:62%">${esc(m.effective || D.effective || '')} / ${esc(m.nextEffective || D.nextEffective || '')}（北京时间）</div></div>
     <div class="row"><div class="nm" style="width:auto;flex:1">覆盖范围</div><div class="ex" style="max-width:62%">${D.airports.length} 个机场 · ${D.areas.filter(a => a.freqs.length).length} 个进近区/扇区 · ${D.sectors.length} 个区调扇区 · ${D.ctr.length} 个塔台管制区</div></div>
     <div class="row"><div class="nm" style="width:auto;flex:1">频率条数</div><div class="ex" style="max-width:62%">${D.airports.reduce((s, a) => s + a.comms.length, 0)} 条机场通信 · ${D.sectors.reduce((s, x) => s + x.freqs.length, 0)} 条区调 · ${D.areas.reduce((s, x) => s + x.freqs.length, 0)} 条进近</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">在线底图</div><div class="ex" style="max-width:62%">放大到城市级后自动加载瓦片，可切换卫星 / OSM / 关。影像 © Esri, Maxar, Earthstar Geographics；OSM 底图 © OpenStreetMap contributors（ODbL）。离线时自动回落到矢量底图</div></div>
   </div>
   <div class="grp"><h4>取用的 AIP 章节</h4>
     <div class="row"><div class="nm" style="width:auto;flex:1">AD 2.18</div><div class="ex" style="max-width:62%">机场通信设施：塔台、地面、放行、机坪、通播、进近</div></div>

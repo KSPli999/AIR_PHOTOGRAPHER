@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.dsh.airspace"
-    android:versionCode="7"
-    android:versionName="2026.12.9">
+    android:versionCode="8"
+    android:versionName="2026.12.10">
 
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34"/>
     <application
         android:label="天际电波"
