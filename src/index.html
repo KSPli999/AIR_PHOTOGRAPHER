@@ -121,15 +121,13 @@
       <div class="chip on" data-layer="tma">进近</div>
       <div class="chip on" data-layer="twr">塔台区</div>
       <div class="chip on" data-layer="apt">机场</div>
-      <div class="chip on" id="baseChip">底图 卫星</div>
     </div>
     <div id="legend">
       <div><i style="background:#a78bfa"></i>区域管制扇区</div>
       <div><i style="background:#39d0ff"></i>进近管制区</div>
       <div><i style="background:#fb7185"></i>塔台管制区</div>
       <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
-      <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大到机场可见跑道</div>
-      <div id="baseAttr" style="color:#4f6475"></div>
+      <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大到机场显示道面示意</div>
     </div>
     <div id="zoom">
       <button id="zin">+</button><button id="zout">−</button><button id="zfit">⤢</button>
@@ -196,61 +194,8 @@ function viewBounds(){
   const wy = s => proj.oy + (s - proj.oy - proj.ty) / z;
   return {x0: wx(0), x1: wx(proj.w), y0: wy(0), y1: wy(proj.h)};
 }
-// ---------- 在线底图（卫星 / OSM 瓦片） ----------
-// 只在放大到城市级以后才铺瓦片；没网或加载失败时保持矢量底图，不影响使用
-const TILE_MIN = 8, TILE_MAX = 18;
-const TILE_MODES = {
-  sat: {
-    attr: '影像 © Esri, Maxar, Earthstar Geographics',
-    url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
-  },
-  osm: {
-    attr: '底图 © OpenStreetMap contributors',
-    url: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
-  }
-};
-let tilesOn = false;
-function tileLayer(){
-  tilesOn = false;
-  const mode = TILE_MODES[baseMode];
-  if (!mode) return '';
-  const z = zoom;
-  const mpp = 111320 / (proj.scale * z);                       // 当前米/屏幕像素
-  let tz = Math.round(Math.log2(156543.03392 * Math.cos(proj.lat0 * Math.PI / 180) / mpp));
-  tz = Math.max(1, Math.min(TILE_MAX, tz));
-  if (tz < TILE_MIN) return '';
-  const base = viewBounds();
-  const padX = (base.x1 - base.x0) * .6, padY = (base.y1 - base.y0) * .6;
-  const vb = {x0: base.x0 - padX, x1: base.x1 + padX, y0: base.y0 - padY, y1: base.y1 + padY};
-  const lonOf = W => proj.lon0 + (W - proj.ox) / (proj.cos * proj.scale);
-  const latOf = W => proj.lat0 - (W - proj.oy) / proj.scale;
-  const n = 2 ** tz;
-  const mercY = lat => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
-  let tx0 = Math.floor((lonOf(vb.x0) + 180) / 360 * n), tx1 = Math.floor((lonOf(vb.x1) + 180) / 360 * n);
-  let ty0 = Math.floor(mercY(latOf(vb.y0))), ty1 = Math.floor(mercY(latOf(vb.y1)));
-  if (tx0 > tx1) { const t = tx0; tx0 = tx1; tx1 = t; }
-  if (ty0 > ty1) { const t = ty0; ty0 = ty1; ty1 = t; }
-  tx0 = Math.max(0, tx0); tx1 = Math.min(n - 1, tx1);
-  ty0 = Math.max(0, ty0); ty1 = Math.min(n - 1, ty1);
-  if (tx1 < tx0 || ty1 < ty0) return '';
-  if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 80) return '';       // 安全阀，正常不会触发
-  let out = '';
-  const tileLat = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
-  for (let ty = ty0; ty <= ty1; ty++) {
-    for (let tx = tx0; tx <= tx1; tx++) {
-      const lonL = tx / n * 360 - 180, lonR = (tx + 1) / n * 360 - 180;
-      const latT = tileLat(ty), latB = tileLat(ty + 1);
-      const [ax, ay] = pt([latT, lonL]);
-      const [bx, by] = pt([latB, lonR]);
-      out += `<image xlink:href="${mode.url(tz, tx, ty)}" href="${mode.url(tz, tx, ty)}" x="${(ax - .5).toFixed(1)}" y="${(ay - .5).toFixed(1)}"
-        width="${(bx - ax + 1).toFixed(1)}" height="${(by - ay + 1).toFixed(1)}"
-        preserveAspectRatio="none" style="pointer-events:none"/>`;
-    }
-  }
-  tilesOn = true;
-  return out;
-}
 const path = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }).join(' ') + ' Z';
+const linePath = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }).join(' ');
 // 一个空域可能有多个环（不同跑道构型 / 多块区域）
 const ringsOf = o => o.rings || [o.pts];
 const pathAll = o => ringsOf(o).map(r => path(r)).join(' ');
@@ -290,11 +235,6 @@ function pf(packArr){
 // ---------- state ----------
 const layerOn = {acc: true, tma: true, twr: true, apt: true};
 let zoom = 1, focus = null;
-// 底图模式：卫星 / OSM / 关，记住上次选择
-const BASE_KEY = 'skywave.base';
-let baseMode = 'sat';
-try { baseMode = localStorage.getItem(BASE_KEY) || 'sat'; } catch (e) {}
-if (!TILE_MODES[baseMode]) baseMode = 'sat';
 
 // ---------- render ----------
 function render(keepView){
@@ -341,13 +281,6 @@ function render(keepView){
     const bw = (1.2 / Math.max(1, zc / 1.6)).toFixed(2);
     g += `<path d="${D.border.map(r => path(r)).join(' ')}" fill="#0c1a25" fill-opacity=".9"
       stroke="#31586f" stroke-width="${bw}" stroke-opacity=".85"/>`;
-  }
-  // ---- 在线底图：放大后铺卫星/OSM 瓦片，能看到跑道与滑行道 ----
-  g += tileLayer();
-  const attrEl = document.getElementById('baseAttr');
-  if (attrEl) {
-    attrEl.textContent = tilesOn ? TILE_MODES[baseMode].attr
-      : (TILE_MODES[baseMode] && zoom >= 4 ? '继续放大，加载卫星底图' : '');
   }
   // ---- 情报区边界 ----
   (D.fir || []).forEach((f) => {
@@ -399,15 +332,18 @@ function render(keepView){
       }
     });
   }
+  // ---- 机场道面（GND 风格示意，放大后出现） ----
+  const diagOn = proj.scale * zc / 111320 >= DIAG_PPM;
+  if (diagOn) g += groundLayer(zc, vb);
   // ---- 机场 ----
   if (layerOn.apt) {
     const aptLabels = [];
     D.airports.forEach((a, i) => {
       const [x, y] = pt(a.arp);
       const big = a.comms.some(c => c.type === 'TWR');
-      g += `<circle class="aptdot" data-kind="apt" data-i="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(big ? 3 : 2.2) / Math.max(1, zc / 2)}"
+      g += `<circle class="aptdot" data-kind="apt" data-i="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(diagOn ? (big ? 2.2 : 1.6) : (big ? 3 : 2.2)) / Math.max(1, zc / 2)}"
         fill="#ffd27f" fill-opacity=".95" stroke="#3a2a10" stroke-width="${(0.8 / zc).toFixed(3)}"/>`;
-      if (zc >= 1.7) aptLabels.push({a, x, y, prio: a.iata ? 6 : 5});
+      if (zc >= 1.7 && !diagOn) aptLabels.push({a, x, y, prio: a.iata ? 6 : 5});
     });
     // 机场标注按 IATA 优先，先放大的
     aptLabels.sort((p, q) => q.prio - p.prio);
@@ -467,6 +403,207 @@ function grid(P, z, vb){
     if (y > vb.y0 + 12 && y < vb.y1 - 6) s += `<text x="${(left + 3).toFixed(1)}" y="${(y - 3).toFixed(1)}" font-size="${(9 / z).toFixed(1)}" fill="#2f4354">${lat}°N</text>`;
   }
   return s;
+}
+
+// ---------- 机场道面（GND 图示意） ----------
+// 跑道阈值：OurAirports（公有领域）；滑行道/机坪/机场边界：OSM（ODbL）
+const RWY_DATA = window.__RWY__ || { rwy: {} };
+const GROUND_DATA = window.__GROUND__ || { ap: {} };
+const DIAG_PPM = 0.03;   // 每屏幕像素 33 米以内才画道面
+function recipRwy(d){
+  const m = /^(\d{1,2})([LRC]?)$/.exec(String(d || ''));
+  if (!m) return d;
+  const n = ((+m[1] + 17) % 36) + 1;
+  const s = m[2] === 'L' ? 'R' : m[2] === 'R' ? 'L' : '';
+  return String(n).padStart(2, '0') + s;
+}
+function aipRunways(a){
+  const seen = new Set(), out = [];
+  (a.runways || []).forEach(r => {
+    if (!r.d || seen.has(r.d)) return;
+    seen.add(r.d);
+    const mate = (a.runways || []).find(x => x.d === recipRwy(r.d));
+    if (mate) seen.add(mate.d);
+    const dim = String(r.dim || '').split(/[×xX*]/).map(Number);
+    out.push({ a: r.d, b: mate ? mate.d : recipRwy(r.d), len: dim[0] || 3000, w: dim[1] || 45, hdg: r.hdg || 0 });
+  });
+  return out;
+}
+const angDiff = (a, b) => { let d = Math.abs(a - b) % Math.PI; return Math.min(d, Math.PI - d); };
+function runwaysOf(a, g){
+  const list = ((RWY_DATA.rwy || {})[a.id] || []).map(r => ({ le: r.le, he: r.he, w: r.w || 45, la: r.a, lb: r.b }));
+  // 没有阈值坐标的机场，用 OSM 跑道线兜底
+  if (!list.length && g && g.rwy) for (const r of g.rwy) {
+    if (!r.p || r.p.length < 2) continue;
+    const ds = String(r.rf || "").split(/[/-]/);
+    list.push({ le: r.p[0], he: r.p[r.p.length - 1], w: r.w || 45, la: (ds[0] || "").trim(), lb: (ds[1] || "").trim() });
+  }
+  const have = new Set();
+  list.forEach(r => { have.add(r.la); have.add(r.lb); });
+  const cos = Math.cos(a.arp[0] * Math.PI / 180);
+  const toM = (la, lo) => [(lo - a.arp[1]) * 111320 * cos, (la - a.arp[0]) * 111320];
+  const toLL = (x, y) => [a.arp[0] + y / 111320, a.arp[1] + x / (111320 * cos)];
+  let extra = 0;
+  for (const rw of aipRunways(a)) {
+    if (have.has(rw.a) || have.has(rw.b)) continue;
+    // OSM 里有这条跑道就用真实线位
+    const osm = ((g && g.rwy) || []).find(w => {
+      const refs = String(w.rf || "").split(/[\/\-,\s]+/).filter(Boolean);
+      return refs.includes(rw.a) || refs.includes(rw.b);
+    });
+    if (osm && osm.p && osm.p.length >= 2) {
+      list.push({ le: osm.p[0], he: osm.p[osm.p.length - 1], w: osm.w || rw.w, la: rw.a, lb: rw.b });
+      continue;
+    }
+    const h = rw.hdg * Math.PI / 180;
+    let ref = null, refDir = null;
+    for (const r of list) {
+      const [x1, y1] = toM(r.le[0], r.le[1]), [x2, y2] = toM(r.he[0], r.he[1]);
+      const hh = Math.atan2(x2 - x1, y2 - y1);
+      if (angDiff(hh, h) < 0.15) { ref = r; refDir = hh; break; }
+    }
+    let cx = 0, cy = 0;
+    if (ref) {
+      const [x1, y1] = toM(ref.le[0], ref.le[1]), [x2, y2] = toM(ref.he[0], ref.he[1]);
+      cx = (x1 + x2) / 2; cy = (y1 + y2) / 2;
+      if (angDiff(refDir, h) > Math.PI / 2) refDir += Math.PI;
+      const side = /R$/.test(rw.a) ? 1 : -1;
+      const sp = Math.max(320, ref.w * 6);
+      cx += Math.cos(refDir) * sp * side;
+      cy += -Math.sin(refDir) * sp * side;
+    } else {
+      cx = Math.cos(h) * 400 * extra;
+      cy = -Math.sin(h) * 400 * extra;
+      extra++;
+    }
+    const hx = Math.sin(h) * rw.len / 2, hy = Math.cos(h) * rw.len / 2;
+    list.push({ le: toLL(cx - hx, cy - hy), he: toLL(cx + hx, cy + hy), w: rw.w, la: rw.a, lb: rw.b });
+  }
+  return list;
+}
+function textW(s, fs){
+  let w = 0;
+  for (const ch of String(s)) w += /[\u4e00-\u9fa5]/.test(ch) ? fs : fs * .6;
+  return w;
+}
+function airportDiagram(a, g, zc, k, vb){
+  const rwys = runwaysOf(a, g);
+  if (!rwys.length) return '';
+  const fs = n => (n / zc).toFixed(3);
+  let out = '';
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  const bx = (x, y) => { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; };
+
+  if (g && g.ad) for (const ring of g.ad) out += `<path d="${path(ring)}" fill="#0b1721" fill-opacity=".4" stroke="#2f5770" stroke-width="${fs(1)}" stroke-dasharray="${fs(6)} ${fs(5)}"/>`;
+  if (g && g.apron) for (const ap of g.apron) out += `<path d="${path(ap.p)}" fill="#182633" fill-opacity=".92" stroke="#2f4a60" stroke-width="${fs(.8)}"/>`;
+  if (g && g.twy) for (const t of g.twy) {
+    out += `<path d="${linePath(t.p)}" fill="none" stroke="#b8934a" stroke-opacity=".9" stroke-width="${Math.max((t.w || 18) * k, 1.5 / zc).toFixed(4)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+
+  const ils = {};
+  (a.navs || []).forEach(n => {
+    if (!n.f || !n.rwy) return;
+    if (!/LOC|ILS/i.test((n.cn || '') + (n.type || ''))) return;
+    String(n.rwy).split(/[\/,，、]/).forEach(p => { p = p.trim(); if (p && !ils[p]) ils[p] = n.f; });
+  });
+
+  rwys.forEach(rw => {
+    const [x1, y1] = pt(rw.le), [x2, y2] = pt(rw.he);
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+    if (L < 1e-3) return;
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const hw = Math.max(rw.w * k / 2, 1.1 / zc);
+    bx(x1 - hw, y1 - hw); bx(x2 + hw, y2 + hw);
+    const q = [[x1 + nx * hw, y1 + ny * hw], [x2 + nx * hw, y2 + ny * hw], [x2 - nx * hw, y2 - ny * hw], [x1 - nx * hw, y1 - ny * hw]]
+      .map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    out += `<polygon points="${q}" fill="#46525f" stroke="#b9c9d6" stroke-width="${fs(1)}"/>`;
+    out += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#e6eef6" stroke-width="${fs(.9)}" stroke-dasharray="${fs(10)} ${fs(9)}" stroke-opacity=".85"/>`;
+    const inA = Math.min(45 * k, L * .06);
+    for (const s of [1, -1]) {
+      const ex = s > 0 ? x1 : x2, ey = s > 0 ? y1 : y2;
+      const px = ex + ux * inA * (s > 0 ? 1 : -1), py = ey + uy * inA * (s > 0 ? 1 : -1);
+      out += `<line x1="${(px + nx * hw * .85).toFixed(1)}" y1="${(py + ny * hw * .85).toFixed(1)}" x2="${(px - nx * hw * .85).toFixed(1)}" y2="${(py - ny * hw * .85).toFixed(1)}" stroke="#dfe9f2" stroke-width="${fs(2)}"/>`;
+    }
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    const rot = (ang > 90 || ang < -90) ? ang + 180 : ang;
+    const off = Math.min(150 * k, L * .18);
+    const put = (txt, tx, ty, sz, fill) => {
+      out += `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" fill="${fill}" transform="rotate(${rot.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})" style="font-size:${fs(sz)}px;font-weight:700;paint-order:stroke;stroke:#0a1016;stroke-width:${fs(2.4)}px">${esc(txt)}</text>`;
+    };
+    const ax = x1 + ux * off, ay = y1 + uy * off, bxp = x2 - ux * off, byp = y2 - uy * off;
+    if (rw.la) put(rw.la, ax, ay, 9.5, '#ffffff');
+    if (rw.lb) put(rw.lb, bxp, byp, 9.5, '#ffffff');
+    if (ils[rw.la]) put('ILS ' + ils[rw.la], ax + nx * (11 / zc), ay + ny * (11 / zc), 7, '#7fe3ff');
+    if (ils[rw.lb]) put('ILS ' + ils[rw.lb], bxp + nx * (11 / zc), byp + ny * (11 / zc), 7, '#7fe3ff');
+  });
+
+  // 没有 OSM 道面时，画一条示意滑行道 + 机坪，保证每个机场都有 GND 图的样子
+  if (!g) {
+    const rw = rwys[0];
+    const [x1, y1] = pt(rw.le), [x2, y2] = pt(rw.he);
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const off = rw.w * k + 250 * k;
+    const tx1 = x1 + nx * off, ty1 = y1 + ny * off, tx2 = x2 + nx * off, ty2 = y2 + ny * off;
+    out += `<line x1="${tx1.toFixed(1)}" y1="${ty1.toFixed(1)}" x2="${tx2.toFixed(1)}" y2="${ty2.toFixed(1)}" stroke="#b8934a" stroke-opacity=".85" stroke-width="${Math.max(18 * k, 1.5 / zc).toFixed(4)}" stroke-linecap="round"/>`;
+    for (const t of [.28, .72]) {
+      out += `<line x1="${(x1 + dx * t).toFixed(1)}" y1="${(y1 + dy * t).toFixed(1)}" x2="${(tx1 + dx * t).toFixed(1)}" y2="${(ty1 + dy * t).toFixed(1)}" stroke="#b8934a" stroke-opacity=".7" stroke-width="${Math.max(14 * k, 1.2 / zc).toFixed(4)}" stroke-linecap="round"/>`;
+    }
+    const acx = (tx1 + tx2) / 2 + nx * 170 * k, acy = (ty1 + ty2) / 2 + ny * 170 * k;
+    const al = 260 * k, aw = 150 * k;
+    const aq = [[acx + ux * al + nx * aw, acy + uy * al + ny * aw], [acx + ux * al - nx * aw, acy + uy * al - ny * aw],
+      [acx - ux * al - nx * aw, acy - uy * al - ny * aw], [acx - ux * al + nx * aw, acy - uy * al + ny * aw]]
+      .map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    out += `<polygon points="${aq}" fill="#17242f" stroke="#2f4a60" stroke-width="${fs(.8)}"/>`;
+    out += `<text x="${acx.toFixed(1)}" y="${acy.toFixed(1)}" text-anchor="middle" fill="#7f9db2" style="font-size:${fs(7.5)}px">机坪（示意）</text>`;
+    bx(acx - al, acy - aw); bx(acx + al, acy + aw);
+  }
+
+  // 频率牌
+  const uniq = types => {
+    const arr = [];
+    (a.comms || []).forEach(c => { if (types.includes(c.type) && c.f && !arr.includes(c.f)) arr.push(c.f); });
+    return arr.slice(0, 2).join(' / ');
+  };
+  const lines = [];
+  const tw = uniq(['TWR']); if (tw) lines.push(['塔台 TWR', tw]);
+  const gd = uniq(['GND']); if (gd) lines.push(['地面 GND', gd]);
+  const ap = uniq(['APN', 'RAMP']); if (ap) lines.push(['机坪 APN', ap]);
+  const at = uniq(['ATIS']); if (at) lines.push(['通播', at]);
+  {
+    const fsz = 8, lh = 11, hh = 13;
+    const title = (a.nameCn || a.id) + " " + a.id + " · 道面示意";
+    const wpx = Math.max(textW(title, 9), ...lines.map(l => textW(l[0] + '  ' + l[1], fsz))) + 12;
+    const hpx = hh + lines.length * lh + 8;
+    let bxp2 = maxX + 14 / zc, byp2 = minY - hh / zc;
+    if (bxp2 + wpx / zc > vb.x1) bxp2 = minX - 14 / zc - wpx / zc;
+    if (byp2 < vb.y0) byp2 = vb.y0 + 3 / zc;
+    // 机场比视窗还大时，频率牌贴到视窗左上角，保证看得见
+    if (bxp2 < vb.x0 + 4 / zc || bxp2 + wpx / zc > vb.x1 - 4 / zc || byp2 + hpx / zc > vb.y1 - 4 / zc) {
+      bxp2 = vb.x0 + 10 / zc; byp2 = vb.y0 + 10 / zc;
+    }
+    out += `<rect x="${bxp2.toFixed(1)}" y="${byp2.toFixed(1)}" width="${fs(wpx + 2)}" height="${fs(hpx)}" rx="${fs(3)}" fill="#0b1620" fill-opacity=".9" stroke="#2c4a5e" stroke-width="${fs(1)}"/>`;
+    out += `<text x="${(bxp2 + 6 / zc).toFixed(1)}" y="${(byp2 + 10 / zc).toFixed(1)}" fill="#ffe6b8" style="font-size:${fs(9)}px;font-weight:700">${esc(title)}</text>`;
+    lines.forEach((l, i) => {
+      const yy = byp2 + (hh + i * lh + 8) / zc;
+      out += `<text x="${(bxp2 + 6 / zc).toFixed(1)}" y="${yy.toFixed(1)}" fill="#8fb3c9" style="font-size:${fs(fsz)}px">${esc(l[0])}</text>`;
+      out += `<text x="${(bxp2 + (wpx - 6) / zc).toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="end" fill="#e8eef5" style="font-size:${fs(fsz)}px;font-weight:700">${esc(l[1])}</text>`;
+    });
+  }
+  return out;
+}
+function groundLayer(zc, vb){
+  if (!layerOn.apt) return '';
+  const k = proj.scale / 111320;
+  if (k * zc < DIAG_PPM) return '';
+  const W = vb.x1 - vb.x0, H = vb.y1 - vb.y0;
+  let out = '';
+  for (const a of D.airports) {
+    const [x, y] = pt(a.arp);
+    if (x < vb.x0 - W * .35 || x > vb.x1 + W * .35 || y < vb.y0 - H * .35 || y > vb.y1 + H * .35) continue;
+    out += airportDiagram(a, (GROUND_DATA.ap || {})[a.id], zc, k, vb);
+  }
+  return out;
 }
 
 // ---------- interaction ----------
@@ -541,7 +678,7 @@ function showAirport(i){
   const jump = `<div class="row" data-zoom="${esc(a.id)}" style="cursor:pointer;border-bottom:1px solid #243240">
     <div class="nm" style="width:auto;flex:0 0 auto;color:#7fe3ff;font-weight:700">定位</div>
     <div class="fv" style="font-size:13px;color:#9fe6ff">放大到机场道面</div>
-    <div class="ex">卫星底图 · 跑道/滑行道</div></div>`;
+    <div class="ex">道面示意 · 跑道/滑行道/频率</div></div>`;
   showSheet(`${a.nameCn} ${a.iata ? '（' + a.iata + '）' : ''}`, sub, jump + (body || '<div style="color:#8ba0b5;font-size:12px">本场未公布通信频率</div>'));
   const zr = document.querySelector('#shBody [data-zoom]');
   if (zr) zr.onclick = () => {
@@ -599,11 +736,11 @@ function localXY(e){
   const r = svgEl().getBoundingClientRect();
   return {x: e.clientX - r.left, y: e.clientY - r.top};
 }
-// 缩放上限随投影比例变化：换算成瓦片 z 不超过 TILE_MAX，全国视角和聚焦视角手感一致
+// 缩放上限随投影比例变化：最深约 1 米/像素，全国视角和聚焦视角手感一致
+const MIN_MPP = 1.1;
 function zoomCap(){
   if (!proj || !proj.scale) return ZMAX;
-  const mpp1 = 111320 / proj.scale;   // zoom=1 时每像素多少米
-  const cap = (2 ** TILE_MAX) * mpp1 / (156543.03392 * Math.cos(proj.lat0 * Math.PI / 180));
+  const cap = 111320 / (proj.scale * MIN_MPP);
   return Math.min(ZMAX, Math.max(1, cap));
 }
 function clampZoom(z){ return Math.min(zoomCap(), Math.max(ZMIN, z)); }
@@ -713,26 +850,10 @@ document.getElementById('zin').onclick = () => { zoom = clampZoom(zoom * 1.4); r
 document.getElementById('zout').onclick = () => { zoom = clampZoom(zoom / 1.4); render(true); };
 document.getElementById('zfit').onclick = () => { focus = null; render(); };
 
-document.querySelectorAll('#hud .chip').forEach(c => {
-  if (c.id === 'baseChip') return;
-  c.onclick = () => {
-    const k = c.dataset.layer; layerOn[k] = !layerOn[k];
-    c.classList.toggle('on', layerOn[k]); render(true);
-  };
+document.querySelectorAll('#hud .chip').forEach(c => c.onclick = () => {
+  const k = c.dataset.layer; layerOn[k] = !layerOn[k];
+  c.classList.toggle('on', layerOn[k]); render(true);
 });
-// 底图循环：卫星 → OSM → 关
-function updateBaseChip(){
-  const c = document.getElementById('baseChip');
-  if (!c) return;
-  c.textContent = baseMode === 'sat' ? '底图 卫星' : baseMode === 'osm' ? '底图 OSM' : '底图 关';
-  c.classList.toggle('on', !!TILE_MODES[baseMode]);
-}
-document.getElementById('baseChip').onclick = () => {
-  baseMode = baseMode === 'sat' ? 'osm' : baseMode === 'osm' ? 'off' : 'sat';
-  try { localStorage.setItem(BASE_KEY, baseMode); } catch (e) {}
-  updateBaseChip(); render(true);
-};
-updateBaseChip();
 
 // tabs
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
@@ -797,7 +918,7 @@ function buildTable(){
         if (a >= 0) {
           focus = D.airports[a].id;
           document.querySelectorAll('#tabs button')[0].click();
-          zoom = 50; render(true);   // 直接落到机场尺度，卫星底图能看清跑道
+          zoom = 50; render(true);   // 直接落到机场道面尺度
           return;
         }
       }
@@ -814,7 +935,7 @@ function buildSrc(){
     <div class="row"><div class="nm" style="width:auto;flex:1">生效 / 失效</div><div class="ex" style="max-width:62%">${esc(m.effective || D.effective || '')} / ${esc(m.nextEffective || D.nextEffective || '')}（北京时间）</div></div>
     <div class="row"><div class="nm" style="width:auto;flex:1">覆盖范围</div><div class="ex" style="max-width:62%">${D.airports.length} 个机场 · ${D.areas.filter(a => a.freqs.length).length} 个进近区/扇区 · ${D.sectors.length} 个区调扇区 · ${D.ctr.length} 个塔台管制区</div></div>
     <div class="row"><div class="nm" style="width:auto;flex:1">频率条数</div><div class="ex" style="max-width:62%">${D.airports.reduce((s, a) => s + a.comms.length, 0)} 条机场通信 · ${D.sectors.reduce((s, x) => s + x.freqs.length, 0)} 条区调 · ${D.areas.reduce((s, x) => s + x.freqs.length, 0)} 条进近</div></div>
-    <div class="row"><div class="nm" style="width:auto;flex:1">在线底图</div><div class="ex" style="max-width:62%">放大到城市级后自动加载瓦片，可切换卫星 / OSM / 关。影像 © Esri, Maxar, Earthstar Geographics；OSM 底图 © OpenStreetMap contributors（ODbL）。离线时自动回落到矢量底图</div></div>
+    <div class="row"><div class="nm" style="width:auto;flex:1">机场道面</div><div class="ex" style="max-width:62%">跑道阈值坐标来自 OurAirports（公有领域），滑行道 / 机坪 / 机场边界来自 © OpenStreetMap contributors（ODbL）；放大到机场后叠加显示，为示意性质，不替代 AIP 机场图</div></div>
   </div>
   <div class="grp"><h4>取用的 AIP 章节</h4>
     <div class="row"><div class="nm" style="width:auto;flex:1">AD 2.18</div><div class="ex" style="max-width:62%">机场通信设施：塔台、地面、放行、机坪、通播、进近</div></div>

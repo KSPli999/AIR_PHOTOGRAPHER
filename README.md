@@ -23,7 +23,7 @@
 
 | 产物 | 位置 | 用途 |
 |---|---|---|
-| Android APP | `downloads/天际电波.apk` | 手机上装，频率数据离线可用；放大到机场时可加载在线卫星底图 |
+| Android APP | `downloads/天际电波.apk` | 手机上装，完全离线；放大到机场显示 GND 风格道面示意 |
 | 单文件网页 | `downloads/天际电波-单文件.html` | 双击即开，PC/手机都行，零依赖 |
 
 APK 与 `docs/index.html`（GitHub Pages 在线版）用的是同一份界面和同一份数据。
@@ -31,9 +31,9 @@ APK 与 `docs/index.html`（GitHub Pages 在线版）用的是同一份界面和
 ## 怎么用
 
 - **空域图**：默认全国视角。拖动平移、双指（或滚轮）/ `+ / −` 缩放；地图不会被拖出数据边界，放大后会自动出现扇区名与频率。
-  继续放大到城市级会自动铺在线底图：顶部「底图」chip 可切「卫星 / OSM / 关」，卫星图能看清跑道、滑行道与机坪；没网时自动回落到矢量底图，不影响频率查询。
+  放大到机场尺度会自动叠加道面示意：真实跑道阈值线位、滑行道、机坪、机场边界，跑道端标注跑道号与 ILS 频率，旁边附塔台/地面/机坪频率牌——类似 AIP 的 GND 图。
   点紫色区调扇区、蓝色进近区、粉色塔台区、黄色机场点，都会弹出该区域的频率表，点一行即复制。
-  点机场弹层里的「放大到机场道面」可以直接跳到该场 50x 的卫星视角，跑道、滑行道一目了然。
+  点机场弹层里的「放大到机场道面」可以直接跳到该场 50x 的道面视角，跑道朝向、滑行道与频率牌一目了然。
   底图是按国界数据勾出的陆地轮廓，扇区边界在 AIP 原文写「National Boundaries」的地方会贴国境走。
 - **频率总表**：搜索框输入机场名、ICAO、单位或频率（如「太原」「ZBAA」「118.25」）即时过滤；
   点机场那行会跳回地图并定位到该机场。
@@ -49,6 +49,10 @@ build/build.js           把 index.html + data 合成单文件 HTML（docs/downl
 build/preview.js         生成 docs/preview.svg 预览图
 build/serve.js           本地预览服务（127.0.0.1:3110）
 apk/                     Android 工程（aapt + javac + d8 + apksigner，全在手机上构建）
+build/gen-rwy.js          OurAirports 跑道阈值 -> data/RWY.json
+build/gen-ground.js       OSM 道面抓取（Overpass，缓存到 ~/.cache/osm）
+build/gen-ground-osmapi.js OSM 道面兜底抓取（OSM 主 API）
+build/gen-ground-data.js  道面数据抽稀 -> data/GROUND.json
 docs/抓取流程.md          下个 AIRAC 周期怎么重新抓数据
 docs/data-format.md      数据字段说明
 ```
@@ -57,6 +61,9 @@ docs/data-format.md      数据字段说明
 
 ```bash
 node build/gen-national.js   # 需先按 docs 抓好 ~/work/eaip 下的原始数据
+node build/gen-rwy.js        # 下载 OurAirports 跑道坐标（首次联网，之后读缓存）
+node build/gen-ground.js     # 抓 OSM 道面（可断点续跑；慢的话用 gen-ground-osmapi.js 兜底）
+node build/gen-ground-data.js # 抽稀生成 data/GROUND.json
 node build/build.js          # 生成单文件 HTML（docs/、downloads/、apk/assets/）
 bash apk/build.sh            # 生成并签名 APK
 cp apk/空域频率图.apk downloads/天际电波.apk
@@ -70,6 +77,7 @@ cp apk/空域频率图.apk downloads/天际电波.apk
 ## 免责
 
 供模拟飞行、学习与资料核对。真实飞行以现行有效 AIP/NAIP 与管制指令为准。
+机场道面示意由 OurAirports（公有领域）的跑道阈值坐标与 © OpenStreetMap contributors（ODbL）的滑行道/机坪/边界数据绘制，未经逐场校对，仅作位置参考，不可作为滑行依据。
 ILS 下滑台（GP）与指点标频率为机载接收频率，不可用于通话。
 
 ## License
