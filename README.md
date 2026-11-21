@@ -9,15 +9,14 @@
 当前数据集：**ZBYN 太原/武宿 + 北京管制区（ZBPE）42 个区调扇区**
 数据周期：**EAIP 2026-12 (V1.3)**，2026-11-26 生效 / 2026-12-24 失效（2611-12 期）
 
-## 三个产物
+## 产物 · 只做安卓
 
 | 产物 | 位置 | 用途 |
 |---|---|---|
-| Android APP | `downloads/空域频率图.apk` | 手机上装，离线可用 |
-| 单文件网页 | `downloads/太原空域频率图-单文件.html` | 双击即开，PC/手机都行，零依赖 |
-| Windows exe 套件 | `downloads/山西空域频率图-桌面版.zip` | 拿到 PC 上跑 `build-exe.bat` 出 exe |
+| Android APP | `downloads/天际电波.apk` | 手机上装，离线可用 |
+| 单文件网页 | `downloads/天际电波-单文件.html` | 双击即开，PC/手机都行，零依赖 |
 
-三者内容一致：同一份 `src/index.html` + 同一份 `data/ZBYN.json`。
+APK 与 `docs/index.html`（GitHub Pages 在线版）用的是同一份界面和同一份数据。
 
 ## 目录
 
@@ -28,8 +27,8 @@ build/gen.js          由 eAIP 原始 JSON 生成 data/*.json
 build/build.js        把 index.html + data 合成单文件 HTML
 build/serve.js        本地预览服务（127.0.0.1:3110）
 apk/                  Android 工程（aapt + javac + d8 + apksigner，全在手机上构建）
-desktop/              exe 打包套件（Node SEA）
 docs/抓取流程.md      下个 AIRAC 周期怎么重新抓数据
+docs/data-format.md   数据字段说明（扩展新空域看这个）
 ```
 
 ## 重新构建
@@ -44,7 +43,7 @@ APK 构建依赖 `$HOME/toolchain`（aapt/javac/d8/apksigner/zipalign/keytool）
 
 ## 扩展新空域
 
-把新的 `data/XXX.json` 丢进去即可（字段见 `desktop/打包说明.md`）。
+把新的 `data/XXX.json` 丢进去即可（字段见 [docs/data-format.md](docs/data-format.md)）。
 界面顶部有下拉框切换，也支持运行时「导入数据」。
 
 ## 免责
