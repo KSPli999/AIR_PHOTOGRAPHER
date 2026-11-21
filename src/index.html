@@ -29,7 +29,7 @@
   main{flex:1 1 auto;position:relative;min-height:0}
   #map{position:absolute;inset:0;touch-action:none;background:
     radial-gradient(1200px 600px at 50% 0%,#0e1720 0%,#080d12 70%)}
-  svg{width:100%;height:100%;display:block}
+  svg{width:100%;height:100%;display:block;touch-action:none}
   .poly{cursor:pointer;transition:fill-opacity .15s,stroke-opacity .15s}
   .poly:active{fill-opacity:.5}
   .lbl{font-size:10.5px;fill:#cfe6f5;pointer-events:none;paint-order:stroke;
@@ -127,7 +127,7 @@
       <div><i style="background:#39d0ff"></i>进近管制区</div>
       <div><i style="background:#fb7185"></i>塔台管制区</div>
       <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
-      <div style="margin-top:3px;color:#5d7386">放大后显示扇区名与频率</div>
+      <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大后显示扇区名与频率</div>
     </div>
     <div id="zoom">
       <button id="zin">+</button><button id="zout">−</button><button id="zfit">⤢</button>
@@ -162,12 +162,37 @@ function makeProjection(bounds, w, h){
   const sx = Math.max((maxLon - minLon) * cos, .2), sy = Math.max(maxLat - minLat, .2);
   const pad = 0.08;
   const scale = Math.min(w / (sx * (1 + pad * 2)), h / (sy * (1 + pad * 2)));
-  return {lat0, lon0, cos, scale, w, h, ox: w / 2, oy: h / 2, tx: 0, ty: 0};
+  return {lat0, lon0, cos, scale, w, h, ox: w / 2, oy: h / 2, tx: 0, ty: 0, ext: null};
+}
+// 全国数据范围：地图平移的硬边界（与当前是否聚焦机场无关）
+function nationalBounds(){
+  const pts = [];
+  D.sectors.forEach(s => pts.push(...s.pts));
+  D.areas.forEach(s => pts.push(...s.pts));
+  D.ctr.forEach(s => pts.push(...s.pts));
+  D.airports.forEach(a => pts.push(a.arp));
+  (D.border || []).forEach(r => pts.push(...r));
+  (D.fir || []).forEach(x => ringsOf(x).forEach(r => pts.push(...r)));
+  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+  for (const p of pts) {
+    if (p[0] < minLat) minLat = p[0];
+    if (p[0] > maxLat) maxLat = p[0];
+    if (p[1] < minLon) minLon = p[1];
+    if (p[1] > maxLon) maxLon = p[1];
+  }
+  return [minLat, maxLat, minLon, maxLon];
 }
 function pt(p){
   const x = (p[1] - proj.lon0) * proj.cos * proj.scale;
   const y = -(p[0] - proj.lat0) * proj.scale;
-  return [proj.ox + x + proj.tx, proj.oy + y + proj.ty];
+  return [proj.ox + x, proj.oy + y];   // 平移/缩放由 #world 的 transform 统一处理
+}
+// 当前视窗覆盖的世界坐标范围，用于标注与经纬网裁剪
+function viewBounds(){
+  const z = zoom || 1;
+  const wx = s => proj.ox + (s - proj.ox - proj.tx) / z;
+  const wy = s => proj.oy + (s - proj.oy - proj.ty) / z;
+  return {x0: wx(0), x1: wx(proj.w), y0: wy(0), y1: wy(proj.h)};
 }
 const path = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }).join(' ') + ' Z';
 // 一个空域可能有多个环（不同跑道构型 / 多块区域）
@@ -220,25 +245,27 @@ function render(keepView){
       const a = D.airports.find(x => x.id === focus);
       if (a) return [a.arp[0] - .9, a.arp[0] + .9, a.arp[1] - .9, a.arp[1] + .9];
     }
-    const pts = [];
-    D.sectors.forEach(s => pts.push(...s.pts));
-    D.areas.forEach(s => pts.push(...s.pts));
-    D.ctr.forEach(s => pts.push(...s.pts));
-    D.airports.forEach(a => pts.push(a.arp));
-    (D.border || []).forEach(r => pts.push(...r));
-    (D.fir || []).forEach(x => ringsOf(x).forEach(r => pts.push(...r)));
-    const lats = pts.map(p => p[0]), lons = pts.map(p => p[1]);
-    return [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
+    return nationalBounds();
   };
   const keep = keepView ? {tx: proj.tx, ty: proj.ty, z: zoom} : null;
   proj = makeProjection(box(), w, h);
   if (keep) { proj.tx = keep.tx; proj.ty = keep.ty; zoom = keep.z; }
   else { proj.tx = 0; proj.ty = 0; zoom = 1; }
+  // 内容的基准坐标包围盒，供平移边界限制使用
+  const nb = nationalBounds();
+  proj.ext = {
+    x0: (nb[2] - proj.lon0) * proj.cos * proj.scale,
+    x1: (nb[3] - proj.lon0) * proj.cos * proj.scale,
+    y0: -(nb[1] - proj.lat0) * proj.scale,
+    y1: -(nb[0] - proj.lat0) * proj.scale
+  };
+  clampView();   // 先夹紧视图，标注裁剪范围才准确
   const zc = zoom;
+  const vb = viewBounds();
 
   const labels = [];
   const addLabel = (x, y, text, fill, cls, prio, fs, sub, subFill, anchor) => {
-    if (!text || x < 0 || x > w || y < 0 || y > h) return;
+    if (!text || x < vb.x0 || x > vb.x1 || y < vb.y0 || y > vb.y1) return;
     labels.push({x, y, text, fill, cls: cls || 'lbl', prio, fs: fs || 10.5, sub: sub || '', subFill: subFill || '#b9a8f5', anchor: anchor || 'middle'});
   };
   const bboxPx = (pts) => {
@@ -247,7 +274,7 @@ function render(keepView){
     return [x1 - x0, y1 - y0];
   };
 
-  let g = grid(proj, zc);
+  let g = grid(proj, zc, vb);
   // ---- 国界（底图） ----
   if (D.border && D.border.length) {
     const bw = (1.2 / Math.max(1, zc / 1.6)).toFixed(2);
@@ -350,32 +377,33 @@ function placeLabels(items){
 }
 
 // 经纬网，填充地图留白并给出方位感
-function grid(P, z){
+function grid(P, z, vb){
   let s = '';
   const x0 = 68, x1 = 140, y0 = 8, y1 = 56;
   const [ax, ay] = pt([y0, x0]), [bx, by] = pt([y1, x1]);
+  const top = Math.max(ay, vb.y0), bot = Math.min(by, vb.y1);
+  const left = Math.max(ax, vb.x0), right = Math.min(bx, vb.x1);
   for (let lon = 70; lon <= 140; lon += 10) {
     const [x] = pt([y0, lon]);
-    if (x < -20 || x > P.w + 20) continue;
-    s += `<line x1="${x.toFixed(1)}" y1="${Math.max(ay, 0).toFixed(1)}" x2="${x.toFixed(1)}" y2="${Math.min(by, P.h).toFixed(1)}" stroke="#16232e" stroke-width="${(0.7 / z).toFixed(2)}"/>`;
-    if (x > 16 && x < P.w - 16) s += `<text x="${(x + 2).toFixed(1)}" y="${Math.min(by, P.h) - 4}" font-size="${(9 / z).toFixed(1)}" fill="#2f4354">${lon}°E</text>`;
+    if (x < vb.x0 - 20 || x > vb.x1 + 20) continue;
+    s += `<line x1="${x.toFixed(1)}" y1="${top.toFixed(1)}" x2="${x.toFixed(1)}" y2="${bot.toFixed(1)}" stroke="#16232e" stroke-width="${(0.7 / z).toFixed(2)}"/>`;
+    if (x > vb.x0 + 16 && x < vb.x1 - 16) s += `<text x="${(x + 2).toFixed(1)}" y="${(bot - 4).toFixed(1)}" font-size="${(9 / z).toFixed(1)}" fill="#2f4354">${lon}°E</text>`;
   }
   for (let lat = 10; lat <= 55; lat += 10) {
     const [, y] = pt([lat, x0]);
-    if (y < -20 || y > P.h + 20) continue;
-    s += `<line x1="${Math.max(ax, 0).toFixed(1)}" y1="${y.toFixed(1)}" x2="${Math.min(bx, P.w).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#16232e" stroke-width="${(0.7 / z).toFixed(2)}"/>`;
-    if (y > 12 && y < P.h - 6) s += `<text x="${Math.max(ax, 0) + 3}" y="${(y - 3).toFixed(1)}" font-size="${(9 / z).toFixed(1)}" fill="#2f4354">${lat}°N</text>`;
+    if (y < vb.y0 - 20 || y > vb.y1 + 20) continue;
+    s += `<line x1="${left.toFixed(1)}" y1="${y.toFixed(1)}" x2="${right.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#16232e" stroke-width="${(0.7 / z).toFixed(2)}"/>`;
+    if (y > vb.y0 + 12 && y < vb.y1 - 6) s += `<text x="${(left + 3).toFixed(1)}" y="${(y - 3).toFixed(1)}" font-size="${(9 / z).toFixed(1)}" fill="#2f4354">${lat}°N</text>`;
   }
   return s;
 }
 
 // ---------- interaction ----------
-let drag = null;
 const svgEl = () => document.getElementById('svg');
 function bindPicks(){
   svgEl().querySelectorAll('[data-kind]').forEach(el => {
     el.addEventListener('click', ev => {
-      if (drag && drag.moved) return;
+      if (suppressClick) return;
       ev.stopPropagation();
       const k = el.dataset.kind, i = +el.dataset.i;
       if (k === 'apr') return;
@@ -481,26 +509,116 @@ function copy(txt){
   else { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); done(); }
 }
 
-// pan / zoom
-svgEl().addEventListener('pointerdown', e => {
-  drag = {x: e.clientX, y: e.clientY, tx: proj.tx, ty: proj.ty, moved: false};
-});
-svgEl().addEventListener('pointermove', e => {
-  if (!drag) return;
-  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-  proj.tx = drag.tx + dx; proj.ty = drag.ty + dy;
-  applyView();
-});
-svgEl().addEventListener('pointerup', () => { setTimeout(() => { drag = null; }, 0); });
-svgEl().addEventListener('pointercancel', () => { drag = null; });
+// pan / pinch zoom / 边界限制
+const ZMIN = .7, ZMAX = 9;
+let drag = null, pinch = null, suppressClick = false;
+const pointers = new Map();
+function localXY(e){
+  const r = svgEl().getBoundingClientRect();
+  return {x: e.clientX - r.left, y: e.clientY - r.top};
+}
+function clampZoom(z){ return Math.min(ZMAX, Math.max(ZMIN, z)); }
+// 平移边界：内容铺不满的方向居中锁定，铺满的方向不许拖出画面
+function clampView(){
+  const e = proj.ext;
+  if (!e) return;
+  const z = zoom, ox = proj.ox, oy = proj.oy, w = proj.w, h = proj.h;
+  const x0 = ox + z * e.x0, x1 = ox + z * e.x1;   // 内容左右边缘（屏幕坐标，未加 tx）
+  if (x1 - x0 >= w) proj.tx = Math.min(-x0, Math.max(w - x1, proj.tx));
+  else proj.tx = (w - (x0 + x1)) / 2;
+  const y0 = oy + z * e.y0, y1 = oy + z * e.y1;
+  if (y1 - y0 >= h) proj.ty = Math.min(-y0, Math.max(h - y1, proj.ty));
+  else proj.ty = (h - (y0 + y1)) / 2;
+}
 function applyView(){
+  clampView();
   const g = document.getElementById('world');
   if (!g) return;
   g.setAttribute('transform', `translate(${(proj.ox * (1 - zoom) + proj.tx).toFixed(1)},${(proj.oy * (1 - zoom) + proj.ty).toFixed(1)}) scale(${zoom})`);
 }
-document.getElementById('zin').onclick = () => { zoom = Math.min(9, zoom * 1.4); render(true); };
-document.getElementById('zout').onclick = () => { zoom = Math.max(.6, zoom / 1.4); render(true); };
+// 双指：以两指中点为锚点缩放，同时跟随中点平移
+function startPinch(){
+  const [a, b] = [...pointers.values()];
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  pinch = {
+    d0: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+    z0: zoom,
+    u: (mx - proj.ox - proj.tx) / zoom,   // 锚点对应的世界坐标偏移
+    v: (my - proj.oy - proj.ty) / zoom
+  };
+}
+function endGesture(){
+  if (pinch) { pinch = null; render(true); }   // 缩放结束后按新比例重排标注
+}
+svgEl().addEventListener('pointerdown', e => {
+  const p = localXY(e);
+  pointers.set(e.pointerId, p);
+  if (pointers.size === 1) {
+    drag = {x: p.x, y: p.y, moved: false, dist: 0};
+  } else if (pointers.size === 2) {
+    drag = null;
+    startPinch();
+  }
+});
+svgEl().addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  const p = localXY(e);
+  pointers.set(e.pointerId, p);
+  if (pinch && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    zoom = clampZoom(pinch.z0 * d / pinch.d0);
+    proj.tx = mx - proj.ox - pinch.u * zoom;
+    proj.ty = my - proj.oy - pinch.v * zoom;
+    applyView();
+  } else if (drag) {
+    const dx = p.x - drag.x, dy = p.y - drag.y;
+    drag.dist += Math.abs(dx) + Math.abs(dy);
+    if (drag.dist > 6) drag.moved = true;
+    drag.x = p.x; drag.y = p.y;
+    proj.tx += dx; proj.ty += dy;
+    applyView();
+  }
+});
+function pointerEnd(e){
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (pointers.size === 2) { startPinch(); return; }   // 三指变两指，重新锚定
+  if (pointers.size === 1) {
+    endGesture();
+    const p = [...pointers.values()][0];
+    drag = {x: p.x, y: p.y, moved: true, dist: 99};   // 一手抬起后按剩余手指继续拖
+    return;
+  }
+  if (pointers.size === 0) {
+    const moved = !!pinch || (drag && drag.moved);
+    endGesture();
+    drag = null;
+    if (moved) { suppressClick = true; setTimeout(() => { suppressClick = false; }, 300); }
+  }
+}
+svgEl().addEventListener('pointerup', pointerEnd);
+svgEl().addEventListener('pointercancel', pointerEnd);
+// 鼠标在画布外松开也要结束手势
+window.addEventListener('pointerup', pointerEnd);
+window.addEventListener('pointercancel', pointerEnd);
+window.addEventListener('blur', () => { pointers.clear(); pinch = null; drag = null; });
+// 桌面端滚轮缩放（以指针为中心）
+svgEl().addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = localXY(e);
+  const u = (p.x - proj.ox - proj.tx) / zoom;
+  const v = (p.y - proj.oy - proj.ty) / zoom;
+  zoom = clampZoom(zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+  proj.tx = p.x - proj.ox - u * zoom;
+  proj.ty = p.y - proj.oy - v * zoom;
+  applyView();
+  clearTimeout(svgEl()._wt);
+  svgEl()._wt = setTimeout(() => render(true), 140);
+}, {passive: false});
+document.getElementById('zin').onclick = () => { zoom = clampZoom(zoom * 1.4); render(true); };
+document.getElementById('zout').onclick = () => { zoom = clampZoom(zoom / 1.4); render(true); };
 document.getElementById('zfit').onclick = () => { focus = null; render(); };
 
 document.querySelectorAll('#hud .chip').forEach(c => c.onclick = () => {
