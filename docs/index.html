@@ -241,7 +241,7 @@ function tileLayer(){
       const latT = tileLat(ty), latB = tileLat(ty + 1);
       const [ax, ay] = pt([latT, lonL]);
       const [bx, by] = pt([latB, lonR]);
-      out += `<image href="${mode.url(tz, tx, ty)}" x="${(ax - .5).toFixed(1)}" y="${(ay - .5).toFixed(1)}"
+      out += `<image xlink:href="${mode.url(tz, tx, ty)}" href="${mode.url(tz, tx, ty)}" x="${(ax - .5).toFixed(1)}" y="${(ay - .5).toFixed(1)}"
         width="${(bx - ax + 1).toFixed(1)}" height="${(by - ay + 1).toFixed(1)}"
         preserveAspectRatio="none" style="pointer-events:none"/>`;
     }
@@ -584,7 +584,14 @@ function localXY(e){
   const r = svgEl().getBoundingClientRect();
   return {x: e.clientX - r.left, y: e.clientY - r.top};
 }
-function clampZoom(z){ return Math.min(ZMAX, Math.max(ZMIN, z)); }
+// 缩放上限随投影比例变化：换算成瓦片 z 不超过 TILE_MAX，全国视角和聚焦视角手感一致
+function zoomCap(){
+  if (!proj || !proj.scale) return ZMAX;
+  const mpp1 = 111320 / proj.scale;   // zoom=1 时每像素多少米
+  const cap = (2 ** TILE_MAX) * mpp1 / (156543.03392 * Math.cos(proj.lat0 * Math.PI / 180));
+  return Math.min(ZMAX, Math.max(1, cap));
+}
+function clampZoom(z){ return Math.min(zoomCap(), Math.max(ZMIN, z)); }
 // 平移边界：内容铺不满的方向居中锁定，铺满的方向不许拖出画面
 function clampView(){
   const e = proj.ext;
