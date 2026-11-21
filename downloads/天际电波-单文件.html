@@ -46,7 +46,7 @@
     background:#0d151dcc;color:var(--txt);font-size:17px;line-height:1}
   #sheet{position:absolute;left:0;right:0;bottom:0;max-height:62%;overflow:auto;
     background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;
-    padding:12px 14px 22px;transform:translateY(101%);transition:transform .25s ease;
+    padding:12px 14px calc(22px + env(safe-area-inset-bottom, 0px));transform:translateY(101%);transition:transform .25s ease;
     box-shadow:0 -18px 40px #000a}
   #sheet.up{transform:translateY(0)}
   #sheet h3{margin:0 0 2px;font-size:15px}
@@ -452,6 +452,7 @@ function buildSrc(){
 }
 
 // ---------- packs ----------
+const IS_APP = !!(window.DSHApp && window.DSHApp.version());
 const LSK = "taiyuan-airspace.packs.v1";
 let PACKS = [];
 const EMB = window.__EMBEDDED_DATA__ || null;
@@ -498,6 +499,7 @@ document.getElementById("fileIn").onchange = e => {
   r.readAsText(f, "utf-8");
   e.target.value = "";
 };
+if (IS_APP) { document.getElementById("expBtn").style.display = "none"; }
 document.getElementById("expBtn").onclick = () => {
   const blob = new Blob([JSON.stringify(D, null, 1)], { type: "application/json" });
   const a = document.createElement("a");
