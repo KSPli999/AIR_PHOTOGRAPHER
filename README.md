@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" width="132" alt="SKYWAVE"></p>
+
 # 天际电波 · SKYWAVE
 
 > 拍机人的航空波段图鉴：把 118–137 MHz 的塔台、进近、区调频率画到空域图上。按下快门前，先知道该听哪个波道。
