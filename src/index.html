@@ -361,8 +361,11 @@ function placeLabels(items){
   const placed = [];
   let out = '';
   const fsr = Math.max(1, zoom);
+  // 描边宽度按屏幕像素给，必须除掉缩放，否则放大后被 scale() 拉成黑气泡
+  const swOf = cls => ((cls === 'freqlbl' || cls === 'apt') ? 2.8 : 2.6) / fsr;
   for (const it of items) {
     const fsW = it.fs / fsr;                       // 世界坐标下的字号（屏幕上恒为 it.fs px）
+    const swW = swOf(it.cls).toFixed(2);
     const wtxt = it.text + (it.sub ? ' ' + it.sub : '');
     const w = Math.max(12 / fsr, wtxt.length * fsW * (/[\u4e00-\u9fa5]/.test(wtxt) ? 1.0 : 0.62));
     const h = fsW * (it.sub ? 2.3 : 1.25);
@@ -370,8 +373,8 @@ function placeLabels(items){
     const r = [x0, it.y - fsW * 0.95, w, h];
     if (placed.some(p => r[0] < p[0] + p[2] && r[0] + r[2] > p[0] && r[1] < p[1] + p[3] && r[1] + r[3] > p[1])) continue;
     placed.push(r);
-    out += `<text class="${it.cls}" x="${it.x.toFixed(2)}" y="${it.y.toFixed(2)}" text-anchor="${it.anchor}" fill="${it.fill}" style="font-size:${fsW.toFixed(2)}px">${esc(it.text)}</text>`;
-    if (it.sub) out += `<text class="freqlbl" x="${it.x.toFixed(2)}" y="${(it.y + fsW * 1.3).toFixed(2)}" text-anchor="${it.anchor}" fill="${it.subFill}" style="font-size:${fsW.toFixed(2)}px">${esc(it.sub)}</text>`;
+    out += `<text class="${it.cls}" x="${it.x.toFixed(2)}" y="${it.y.toFixed(2)}" text-anchor="${it.anchor}" fill="${it.fill}" style="font-size:${fsW.toFixed(2)}px;stroke-width:${swW}px">${esc(it.text)}</text>`;
+    if (it.sub) out += `<text class="freqlbl" x="${it.x.toFixed(2)}" y="${(it.y + fsW * 1.3).toFixed(2)}" text-anchor="${it.anchor}" fill="${it.subFill}" style="font-size:${fsW.toFixed(2)}px;stroke-width:${swOf('freqlbl').toFixed(2)}px">${esc(it.sub)}</text>`;
   }
   return out;
 }
