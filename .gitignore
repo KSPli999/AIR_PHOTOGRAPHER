@@ -1,0 +1,7 @@
+node_modules/
+apk/build/
+apk/keystore.jks
+desktop/app.html
+dist/
+*.log
+_c.js
