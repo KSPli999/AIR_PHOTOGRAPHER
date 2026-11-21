@@ -1,5 +1,6 @@
 #!/system/bin/sh
 set -e
+cd "$(dirname "$0")"   # 脚本内的相对路径都以 apk/ 为基准
 export LD_LIBRARY_PATH="$HOME/toolchain/lib"
 TC="$HOME/toolchain"
 AJ="$HOME/android.jar"

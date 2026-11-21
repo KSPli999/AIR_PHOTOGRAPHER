@@ -18,7 +18,7 @@ public class MainActivity extends Activity {
 
     public class Bridge {
         @JavascriptInterface
-        public String version() { return "2026.12.7"; }
+        public String version() { return "2026.12.8"; }
     }
 
     @Override

@@ -45,9 +45,106 @@ function polyFromText(text) {
   const tokens = String(text).match(/N[\d°′″'":. ]{3,22}?E[\d°′″'":. ]{3,22}/g) || [];
   return tokens.map(parsePt).filter(Boolean);
 }
-function polyOf(list) {
+// ---------------- 国界（补齐 “National Boundaries”） ----------------
+const BORDER = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '../data/border.json'), 'utf8')); }
+  catch (e) { return []; }
+})();
+const COSL = Math.cos((35 * Math.PI) / 180);   // 约中纬度，用于粗估距离
+function d2(a, b) {
+  const dy = a[0] - b[0], dx = (a[1] - b[1]) * COSL;
+  return dy * dy + dx * dx;
+}
+// 最近国界顶点：[ringIdx, ptIdx, dist]
+function nearestBorder(p) {
+  let best = null;
+  for (let r = 0; r < BORDER.length; r++) {
+    const ring = BORDER[r];
+    for (let i = 0; i < ring.length; i++) {
+      const d = d2(p, ring[i]);
+      if (!best || d < best[2]) best = [r, i, d];
+    }
+  }
+  return best;
+}
+const dOf = (a, b) => Math.sqrt(d2(a, b));
+/**
+ * 取国界上 A→B 之间的一段顶点（选较短的一侧）。
+ * AIP 里两点之间若写 “National Boundaries”，实际边界是沿国界走的折线，
+ * 直接连直线会把扇区画到境外去。
+ */
+function borderArc(a, b) {
+  if (!BORDER.length) return [];
+  const na = nearestBorder(a), nb = nearestBorder(b);
+  if (!na || !nb || na[0] !== nb[0]) return [];        // 必须落在同一条环上
+  const straight = dOf(a, b);
+  if (na[2] > 1.2 || nb[2] > 1.2) return [];           // 两端都要靠近国界（<1.2°）
+  const ring = BORDER[na[0]], n = ring.length;
+  const i0 = na[1], i1 = nb[1];
+  const walkFrom = (step) => {
+    const out = [];
+    for (let k = 1; k < n; k++) {
+      const i = (i0 + step * k + n * 2) % n;
+      out.push(ring[i]);
+      if (i === i1) break;
+    }
+    return out;
+  };
+  const len = (arr) => { let s = 0, prev = a; for (const q of arr) { s += dOf(prev, q); prev = q; } return s; };
+  const fwd = walkFrom(1), back = walkFrom(-1);
+  const L = Math.min(len(fwd), len(back));
+  // 差距过大说明这两个点其实不在国界上，宁可保留直线
+  if (L > Math.max(straight * 4, 3)) return [];
+  if (L > 45) return [];
+  const pick = len(back) < len(fwd) ? back : fwd;
+  if (pick.length > 1) pick.pop();                     // 末点即 B，避免重复
+  // 长弧抽稀，避免数据膨胀
+  const MAXN = 220;
+  if (pick.length > MAXN) {
+    const step = pick.length / MAXN, out = [];
+    for (let i = 0; i < pick.length; i += step) out.push(pick[Math.floor(i)]);
+    return out;
+  }
+  return pick;
+}
+/** 把 lateralLimit 列表拆成若干闭合环，并把边界注记替换成国界折线 */
+function ringsOf(list) {
   if (!Array.isArray(list)) return [];
-  return list.map((p) => parsePt(p && p.value)).filter(Boolean);
+  const rings = [];
+  let cur = [], gap = null;
+  const flush = () => { if (cur.length >= 3) rings.push(cur); cur = []; };
+  for (const p of list) {
+    const value = String((p && p.value) || '');
+    const pt = parsePt(value);
+    if (!pt) {
+      if (/boundar/i.test(value)) gap = 'border';
+      else if (cur.length) gap = 'split';              // 跑道构型等标签：下一个点起新环
+      continue;
+    }
+    if (gap === 'border' && cur.length) cur.push(...borderArc(cur[cur.length - 1], pt));
+    if (gap === 'split') flush();
+    gap = null;
+    cur.push(pt);
+  }
+  flush();
+  return rings
+    .map((r) => {
+      const a = r[0], b = r[r.length - 1];
+      return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9 ? r.slice(0, -1) : r;
+    })
+    .filter((r) => r.length >= 3);
+}
+function bboxArea(pts) {
+  let a = [99, 99, -99, -99];
+  for (const p of pts) { a[0] = Math.min(a[0], p[0]); a[1] = Math.min(a[1], p[1]); a[2] = Math.max(a[2], p[0]); a[3] = Math.max(a[3], p[1]); }
+  return (a[2] - a[0]) * (a[3] - a[1]);
+}
+// 多环时用外环做点击/标注，全部环保留用于绘制
+function packRings(rings) {
+  if (!rings.length) return null;
+  if (rings.length === 1) return { pts: rings[0] };
+  const sorted = rings.slice().sort((x, y) => bboxArea(y) - bboxArea(x));
+  return { pts: sorted[0], rings: sorted };
 }
 function clean(s) {
   return String(s == null ? '' : s).replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
@@ -171,24 +268,31 @@ function walk(v, fn) {
   for (const k in v) if (v[k] && typeof v[k] === 'object') walk(v[k], fn);
 }
 const app = JSON.parse(fs.readFileSync(path.join(SRC, 'apparea.json'), 'utf8'));
+const firs = [];   // ENR 2.1.1 情报区（不属于进近层）
 walk(app, (o) => {
   if (!o.nameCn || !o.lateralLimit) return;
-  const pts = polyOf(o.lateralLimit.list);
-  if (pts.length < 3) return;
+  const packed = packRings(ringsOf(o.lateralLimit.list));
+  if (!packed) return;
   const sv = o.serviceVO || {};
   const freqs = chan(sv.radioChannel && sv.radioChannel.list);
   const loc = clean(o.locationIndicator);
   const icao = (loc.match(/^[A-Z]{4}/) || [null])[0];
+  const nameEn = clean(o.nameEn);
+  // 情报区（FIR）：单独一层，只有边界没有频率
+  if (clean(o.type) === 'FIR' || /FIR$/i.test(nameEn)) {
+    firs.push({ loc, nameCn: clean(o.nameCn), nameEn, vertical: vertical(o), ...packed });
+    return;
+  }
   apAreas.push({
     icao,
     loc,
     nameCn: clean(o.nameCn),
-    nameEn: clean(o.nameEn),
+    nameEn,
     call: clean(sv.callSignCn),
     unit: clean(sv.unitProvidingCn),
     vertical: vertical(o),
     freqs,
-    pts,
+    ...packed,
     // 父级“XX进近”没有频率，子级 APxx 才有
     sub: /^AP/i.test(clean(o.nameCn)) || /AP\d/.test(loc),
   });
@@ -200,8 +304,8 @@ const sectors = [];
 walk(cta, (o) => {
   const sv = o.serviceVO || {};
   if (!o.locationIndicator || !sv.callSignCn) return;
-  const pts = polyOf((o.lateralLimit && o.lateralLimit.list) || []);
-  if (pts.length < 3) return;
+  const packed = packRings(ringsOf((o.lateralLimit && o.lateralLimit.list) || []));
+  if (!packed) return;
   const freqs = chan(sv.radioChannel && sv.radioChannel.list);
   if (!freqs.length) return;
   sectors.push({
@@ -212,7 +316,7 @@ walk(cta, (o) => {
     unit: clean(sv.unitProvidingCn),
     vertical: vertical(o),
     freqs,
-    pts,
+    ...packed,
   });
 });
 sectors.sort((a, b) => a.nameEn.localeCompare(b.nameEn, 'en', { numeric: true }));
@@ -232,7 +336,9 @@ const out = {
   airports,
   areas: apAreas,
   sectors,
+  fir: firs,
   ctr: ctrs,
+  border: BORDER,
 };
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
@@ -241,5 +347,5 @@ const kb = (fs.statSync(OUT).size / 1024).toFixed(0);
 const nComms = airports.reduce((s, a) => s + a.comms.length, 0);
 const nNavs = airports.reduce((s, a) => s + a.navs.length, 0);
 const apWith = apAreas.filter((a) => a.freqs.length).length;
-console.log(`airports ${airports.length} | comms ${nComms} | navs ${nNavs} | approach areas ${apAreas.length} (${apWith} 带频率) | sectors ${sectors.length} | ctr ${ctrs.length} | ${kb} KB`);
+console.log(`airports ${airports.length} | comms ${nComms} | navs ${nNavs} | approach areas ${apAreas.length} (${apWith} 带频率) | sectors ${sectors.length} | fir ${firs.length} | ctr ${ctrs.length} | ${kb} KB`);
 console.log('sectors callsigns:', [...new Set(sectors.map((s) => s.call))].length, '| units', [...new Set(sectors.map((s) => s.unit))].length);

@@ -13,7 +13,9 @@ APP 顶部下拉框可切换/导入数据集；也可以在页面里点「导入
 | `airports` | arr | 机场（见下） |
 | `areas` | arr | 进近管制区与 APxx 扇区（见下） |
 | `sectors` | arr | 区调扇区（见下） |
+| `fir` | arr | 情报区边界 `{ loc, nameCn, nameEn, vertical, pts[, rings] }`（没有频率，单独做图层） |
 | `ctr` | arr | 塔台管制区等 ATS 空域 `{ icao, nameCn, nameEn, vertical, pts }` |
+| `border` | arr | 国界（含海岸线、台湾岛）简化折线，仅作底图：`[[[纬度,经度],...], ...]` |
 
 ## 机场 `airports[]`
 
@@ -40,17 +42,19 @@ APP 顶部下拉框可切换/导入数据集；也可以在页面里点「导入
 | `call` / `unit` | 呼号 / 值守单位 |
 | `vertical` | 垂直范围（已去掉坐标、折叠破折号） |
 | `freqs` | `[{ rank:PRIMARY/ALTERNATE, f, open, mode, note }]` |
-| `pts` | `[[纬度, 经度], ...]` |
+| `pts` | 主环 `[[纬度, 经度], ...]`（点击命中与标注用） |
+| `rings` | 可选，多个环时给出全部环（不同跑道构型的扇区、被拆开的区域）；绘制要用它 |
 | `sub` | `true` 表示是 APxx 扇区（父区「XX进近」为 `false`） |
 
 ## 区调扇区 `sectors[]`
 
-`{ loc, nameCn, nameEn, call, unit, vertical, freqs, pts }`。
+`{ loc, nameCn, nameEn, call, unit, vertical, freqs, pts[, rings] }`。
 `call` 是管制单位呼号（如「北京区域」），`unit` 是实际值守单位（如「太原区域管制室」）。
 
 ## 约定
 
-- `pts` 一律是 `[[纬度, 经度], ...]` 十进制度，首尾一般已闭合。
+- `pts` 一律是 `[[纬度, 经度], ...]` 十进制度，首尾一般不重复；有 `rings` 时 `pts` 只是最大的那一环。
+- AIP 侧限里写的 `National Boundaries`，生成时已按 `data/border.json` 的国界折线补齐顶点，所以多边形会贴着国境走，不会拉直线切到境外。
 - `vertical` 是自由文本，如 `GND–5100 m`、`7800 m–GND`。
 - 频率字段不带单位，单位统一 MHz；ILS 下滑台/指点标也在 `navs` 里但不可用于通话。
 

@@ -170,6 +170,9 @@ function pt(p){
   return [proj.ox + x + proj.tx, proj.oy + y + proj.ty];
 }
 const path = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }).join(' ') + ' Z';
+// 一个空域可能有多个环（不同跑道构型 / 多块区域）
+const ringsOf = o => o.rings || [o.pts];
+const pathAll = o => ringsOf(o).map(r => path(r)).join(' ');
 function centroid(pts){
   let a = 0, cx = 0, cy = 0;
   for (let i = 0; i < pts.length; i++) {
@@ -222,6 +225,8 @@ function render(keepView){
     D.areas.forEach(s => pts.push(...s.pts));
     D.ctr.forEach(s => pts.push(...s.pts));
     D.airports.forEach(a => pts.push(a.arp));
+    (D.border || []).forEach(r => pts.push(...r));
+    (D.fir || []).forEach(x => ringsOf(x).forEach(r => pts.push(...r)));
     const lats = pts.map(p => p[0]), lons = pts.map(p => p[1]);
     return [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
   };
@@ -243,10 +248,21 @@ function render(keepView){
   };
 
   let g = grid(proj, zc);
+  // ---- 国界（底图） ----
+  if (D.border && D.border.length) {
+    const bw = (1.2 / Math.max(1, zc / 1.6)).toFixed(2);
+    g += `<path d="${D.border.map(r => path(r)).join(' ')}" fill="#0c1a25" fill-opacity=".9"
+      stroke="#31586f" stroke-width="${bw}" stroke-opacity=".85"/>`;
+  }
+  // ---- 情报区边界 ----
+  (D.fir || []).forEach((f) => {
+    g += `<path d="${pathAll(f)}" fill="none" stroke="#5b9dc4" stroke-opacity=".28"
+      stroke-width="${(1 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-dasharray="7 6"/>`;
+  });
   // ---- 区调扇区 ----
   if (layerOn.acc) {
     D.sectors.forEach((s, i) => {
-      g += `<path class="poly" data-kind="sec" data-i="${i}" d="${path(s.pts)}"
+      g += `<path class="poly" data-kind="sec" data-i="${i}" d="${pathAll(s)}"
         fill="#a78bfa" fill-opacity=".07" stroke="#6d5fae" stroke-width="${(0.8 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-opacity=".8"/>`;
       if (zc >= 2.2) {
         const [bw, bh] = bboxPx(s.pts);
@@ -261,7 +277,7 @@ function render(keepView){
   if (layerOn.tma) {
     D.areas.forEach((a, i) => {
       const sub = a.sub;
-      g += `<path class="poly" data-kind="ap" data-i="${i}" d="${path(a.pts)}"
+      g += `<path class="poly" data-kind="ap" data-i="${i}" d="${pathAll(a)}"
         fill="#39d0ff" fill-opacity="${sub ? .05 : .08}" stroke="#39d0ff" stroke-width="${(sub ? 0.8 : 1.4) / Math.max(1, zc / 1.6)}"
         stroke-opacity="${sub ? .45 : .8}" stroke-dasharray="${sub ? '3 5' : '7 4'}"/>`;
       if (zc >= (sub ? 3.0 : 1.9)) {
@@ -277,7 +293,7 @@ function render(keepView){
   // ---- 塔台管制区 ----
   if (layerOn.twr) {
     D.ctr.forEach((c, i) => {
-      g += `<path class="poly" data-kind="twr" data-i="${i}" d="${path(c.pts)}" fill="#fb7185" fill-opacity=".10"
+      g += `<path class="poly" data-kind="twr" data-i="${i}" d="${pathAll(c)}" fill="#fb7185" fill-opacity=".10"
         stroke="#fb7185" stroke-width="1" stroke-opacity=".7"/>`;
       if (zc >= 3.6) {
         const [bw, bh] = bboxPx(c.pts);
