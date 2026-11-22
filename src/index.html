@@ -455,7 +455,7 @@ function grid(P, z, vb){
 const RWY_DATA = window.__RWY__ || { rwy: {} };
 const GROUND_DATA = window.__GROUND__ || { ap: {} };
 const TERM_DATA = window.__TERM__ || { ap: {} };
-const DIAG_PPM = 0.05;   // 每屏幕像素 33 米以内才画道面
+const DIAG_PPM = 0.03;   // 1px ≤ 33m 就画完整道面
 function recipRwy(d){
   const m = /^(\d{1,2})([LRC]?)$/.exec(String(d || ''));
   if (!m) return d;
@@ -597,7 +597,7 @@ function airportDiagram(a, g, zc, k, vb){
     const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
     if (L < 1e-3) continue;
     const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
-    const W = Math.max(M(rw.w || 45), 9 / zc);   // 太窄时按屏幕 9px 画，保证看得见
+    const W = Math.max(M(rw.w || 45), 4 / zc);   // 太窄时按屏幕 4px 画，保证看得见
     const hw = W / 2;
     const lenM = L / k;                        // 跑道长（米）
     const lead = Math.min(60, lenM * .06);     // 端头留白
@@ -894,7 +894,7 @@ function localXY(e){
   return {x: e.clientX - r.left, y: e.clientY - r.top};
 }
 // 缩放上限随投影比例变化：最深约 1 米/像素，全国视角和聚焦视角手感一致
-const MIN_MPP = 1.1;
+const MIN_MPP = 2.2;
 function zoomCap(){
   if (!proj || !proj.scale) return ZMAX;
   const cap = 111320 / (proj.scale * MIN_MPP);
