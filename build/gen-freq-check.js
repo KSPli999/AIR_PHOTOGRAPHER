@@ -34,7 +34,20 @@ const svgShim = {
   getBoundingClientRect: () => ({ width: W, height: H, left: 0, top: 0 }),
   setAttribute() {}
 };
-const documentShim = { getElementById: id => (id === 'svg' ? svgShim : null) };
+// 模拟画布上的固定 UI 尺寸（CSS 像素，按 400×700 画布比例），用来验证标注不压面板
+const UI_RECTS = {
+  hud: { left: 10, top: 10, width: 335, height: 44 },
+  legend: { left: 10, top: 566, width: 252, height: 120 },
+  zoom: { left: 352, top: 566, width: 36, height: 118 }
+};
+const documentShim = {
+  getElementById: id => {
+    if (id === 'svg') return svgShim;
+    const r = UI_RECTS[id];
+    if (!r) return null;
+    return { style: { display: 'flex' }, getBoundingClientRect: () => ({ ...r, right: r.left + r.width, bottom: r.top + r.height }) };
+  }
+};
 
 const sandbox = {
   console, Math, Number, String, Array, Object, JSON, Set, Map, WeakMap, isNaN, parseInt, parseFloat,
@@ -99,8 +112,12 @@ function snap(s) {
   const P = API.proj;
   const body = svgShim.innerHTML;
   const tf = `translate(${(P.ox * (1 - s.z) + P.tx).toFixed(3)},${(P.oy * (1 - s.z) + P.ty).toFixed(3)}) scale(${s.z})`;
+  const uiOverlay = Object.entries(UI_RECTS).map(([k, r]) =>
+    `<rect x="${r.left}" y="${r.top}" width="${r.width}" height="${r.height}" fill="#ff5a7a" fill-opacity=".10" stroke="#ff5a7a" stroke-opacity=".5" stroke-dasharray="4 4"/>` +
+    `<text x="${r.left + 4}" y="${r.top + 12}" font-size="9" fill="#ff8fa3" opacity=".8">${k}</text>`).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` +
     `<rect width="${W}" height="${H}" fill="#070b10"/>` +
+    `<g>${uiOverlay}</g>` +
     `<g transform="${tf}">${body}</g></svg>`;
   return { body, svg, stats: API.stats || { drawn: 0, dropped: 0, total: 0 } };
 }
@@ -112,6 +129,35 @@ function texts(body) {
   let m;
   while ((m = re.exec(body))) out.push({ cls: m[1], text: m[2] });
   return out;
+}
+// 文字矩形是否压到固定 UI
+function overlayHits(body) {
+  const t = texts(body);
+  let hits = 0;
+  const bad = [];
+  const re = /<text class="([^"]*)" x="([\d.\-]+)" y="([\d.\-]+)"[^>]*font-size:([\d.]+)px[^>]*>([^<]*)<\/text>/g;
+  const tf = /transform="translate\(([-\d.]+),([-\d.]+)\) scale\(([\d.]+)\)"/.exec(body);
+  if (!tf) return { hits, bad };
+  const T = [+tf[1], +tf[2]], z = +tf[3];
+  let m;
+  while ((m = re.exec(body))) {
+    const size = +m[4] * z;
+    const x = T[0] + z * +m[2], y = T[1] + z * +m[3];
+    const w = textW2(m[5], size);
+    const a = [x - w / 2, y - size * .95, w, size * 1.25];
+    for (const k of Object.keys(UI_RECTS)) {
+      const b = UI_RECTS[k];
+      const iw = Math.min(a[0] + a[2], b.left + b.width) - Math.max(a[0], b.left);
+      const ih = Math.min(a[1] + a[3], b.top + b.height) - Math.max(a[1], b.top);
+      if (iw > 0 && ih > 0) { hits++; if (bad.length < 4) bad.push(m[5] + '@' + k); break; }
+    }
+  }
+  return { hits, bad };
+}
+function textW2(s, fs) {
+  let w = 0;
+  for (const ch of s) w += /[\u4e00-\u9fa5]/.test(ch) ? fs : fs * .6;
+  return w;
 }
 function inView(lat, lon, P, z) {
   const [x, y] = API.pt([lat, lon]);
@@ -173,7 +219,8 @@ for (const s of SHOTS) {
   const cov = coverage(s.z);
   totalDrawn += r.stats.drawn; totalDropped += r.stats.dropped;
   const fr = texts(r.body).filter(x => x.cls === 'freqlbl').length;
-  rows.push({ ...s, svgFile, stats: r.stats, fr, cov, svg: r.svg });
+  const ui = overlayHits(r.svg);
+  rows.push({ ...s, svgFile, stats: r.stats, fr, cov, ui, svg: r.svg });
 }
 const html = `<!doctype html><meta charset="utf-8"><title>频率标注自检 · SKYWAVE</title>
 <style>
@@ -198,12 +245,12 @@ svg{display:block;width:100%;height:auto;background:#070b10}
 <table><thead><tr><th>快照</th><th>z</th><th>标注画出/丢弃</th><th>视窗内带频率对象</th><th>主用频率全部可读</th><th>分层 画出/候选 · 丢弃</th></tr></thead><tbody>
 ${rows.map(r => `<tr><td>${r.name}</td><td>${r.z}</td><td>${r.stats.drawn} / ${r.stats.dropped}</td><td>${r.cov.want}</td>
 <td class="${r.cov.got === r.cov.want ? 'ok' : 'bad'}">${r.cov.got}</td>
-<td class="miss">${(() => { const k = r.stats.byKind || {}; return Object.entries(k).map(([a, b]) => `${a} ${b.drawn}/${b.drawn + b.dropped}`).join(' · ') + ((r.stats.lost || []).length ? '<br>丢弃：' + r.stats.lost.slice(0, 5).join('、') : ''); })()}</td></tr>`).join('\n')}
+<td class="miss">${r.ui && r.ui.hits ? '<b class="bad">压 UI ' + r.ui.hits + ' 处：' + r.ui.bad.join('、') + '</b><br>' : '压 UI 0 · '}${(() => { const k = r.stats.byKind || {}; return Object.entries(k).map(([a, b]) => `${a} ${b.drawn}/${b.drawn + b.dropped}`).join(' · ') + ((r.stats.lost || []).length ? '<br>丢弃：' + r.stats.lost.slice(0, 5).join('、') : ''); })()}</td></tr>`).join('\n')}
 </tbody></table>`;
 const out = process.env.OUT_FILE || path.join(process.env.HOME, '频率标注自检.html');
 fs.writeFileSync(out, html);
 console.log('shots', rows.length, 'drawn', totalDrawn, 'dropped', totalDropped, '->', out);
 for (const r of rows) {
   const bk = Object.entries(r.stats.byKind || {}).map(([a, b]) => `${a}:${b.drawn}/${b.drawn + b.dropped}`).join(' ');
-  console.log(`${r.name.padEnd(22)} z=${String(r.z).padEnd(4)} 标注 ${r.stats.drawn}/${r.stats.total} 频率行 ${r.fr}  ${bk}${(r.stats.lost || []).length ? '  丢弃:' + r.stats.lost.join('、') : ''}`);
+  console.log(`${r.name.padEnd(22)} z=${String(r.z).padEnd(4)} 标注 ${r.stats.drawn}/${r.stats.total} 频率行 ${r.fr}  压UI ${r.ui ? r.ui.hits : '-'}  ${bk}${(r.stats.lost || []).length ? '  丢弃:' + r.stats.lost.join('、') : ''}`);
 }

@@ -415,6 +415,26 @@ function render(keepView){
   };
   const visible = (b) => b[2] > vb.x0 && b[0] < vb.x1 && b[3] > vb.y0 && b[1] < vb.y1;
   const bboxPx = (b) => [b[2] - b[0], b[3] - b[1]];
+  // 浮在画布上的固定 UI（图层开关 / 图例 / 缩放按钮 / 右上频率牌）也占位：
+  // 把它们的屏幕矩形换算成世界坐标，标注避让时一并绕开，不再压在面板底下
+  const overlayBoxes = () => {
+    const out = [];
+    const sr = svg.getBoundingClientRect ? svg.getBoundingClientRect() : {left: 0, top: 0};
+    const wx = v => vb.x0 + (v / w) * (vb.x1 - vb.x0);
+    const wy = v => vb.y0 + (v / h) * (vb.y1 - vb.y0);
+    for (const id of ['hud', 'legend', 'zoom', 'aptBoard']) {
+      const el = document.getElementById(id);
+      if (!el || !el.getBoundingClientRect) continue;
+      if (el.style && el.style.display === 'none') continue;
+      const r = el.getBoundingClientRect();
+      if (!r || !r.width || !r.height) continue;
+      const sx = r.left - sr.left - 4, sy = r.top - sr.top - 4;
+      out.push([wx(sx), wy(sy), wx(sx + r.width + 8) - wx(sx), wy(sy + r.height + 8) - wy(sy)]);
+    }
+    return out;
+  };
+  const uiSeed = overlayBoxes();
+  aptBoxes.push(...uiSeed);
   // 空域标注块：一行单位标题 + 若干「扇区名 / 主用频率 / 高度带」成员；按优先级参与避让
   const pushAir = (o, cfg) => {
     const members = (cfg.members || []).filter(m => m && (m.name || m.main));

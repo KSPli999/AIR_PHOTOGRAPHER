@@ -1,6 +1,6 @@
 # 天际电波 SKYWAVE · 工程交接书
 
-> 写于 2026-11-22，对应 APK `2026.12.25.2`（versionCode 24），git `本次改动`。
+> 写于 2026-11-22，对应 APK `2026.12.25.3`（versionCode 25），git `本次改动`。
 > 目的：让一个**没有上下文的新对话**读完这一份就能接着干。
 
 ---
@@ -64,7 +64,7 @@ work/airspace/
 ├── build/                  生成与预览脚本（见 §6）
 │   └── gen-freq-check.js   频率标注自检：真实投影出快照 SVG + 重叠/丢弃统计
 ├── apk/                    Android 工程 + build.sh + keystore + 产物
-│   ├── AndroidManifest.xml versionCode 24 / versionName 2026.12.25.2
+│   ├── AndroidManifest.xml versionCode 25 / versionName 2026.12.25.3
 │   ├── src/app/dsh/airspace/MainActivity.java  WebView 壳（assets/index.html）
 │   ├── assets/index.html   构建时覆盖
 │   └── 空域频率图.apk      740 KB
