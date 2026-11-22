@@ -512,6 +512,19 @@ function textW(s, fs){
   for (const ch of String(s)) w += /[\u4e00-\u9fa5]/.test(ch) ? fs : fs * .6;
   return w;
 }
+// 低倍率下的跑道示意：只画跑道线位，不画标记与文字
+function runwayLines(a, g, zc, k){
+  const list = runwaysOf(a, g);
+  if (!list.length) return "";
+  let out = "";
+  for (const rw of list) {
+    const [x1, y1] = pt(rw.le), [x2, y2] = pt(rw.he);
+    if (Math.hypot(x2 - x1, y2 - y1) < 1e-4) continue;
+    const wpx = Math.max(rw.w * k, 2.2 / zc);
+    out += `<line x1="${nf(x1)}" y1="${nf(y1)}" x2="${nf(x2)}" y2="${nf(y2)}" stroke="#93a2b2" stroke-width="${wpx}" stroke-linecap="round" opacity=".95"/>`;
+  }
+  return out;
+}
 function airportDiagram(a, g, zc, k, vb){
   const rwys = runwaysOf(a, g);
   if (!rwys.length) return '';
@@ -722,13 +735,14 @@ function jumpToAirport(id){
 function groundLayer(zc, vb){
   if (!layerOn.apt) return '';
   const k = proj.scale / 111320;
-  if (k * zc < DIAG_PPM) return '';
+  if (k * zc < 0.006) return '';              // 约 1px≤170m 起画跑道细线
+  const simple = k * zc < DIAG_PPM;                 // 还没到道面尺度：只画跑道示意
   const W = vb.x1 - vb.x0, H = vb.y1 - vb.y0;
   let out = '';
   for (const a of D.airports) {
     const [x, y] = pt(a.arp);
     if (x < vb.x0 - W * .35 || x > vb.x1 + W * .35 || y < vb.y0 - H * .35 || y > vb.y1 + H * .35) continue;
-    out += airportDiagram(a, (GROUND_DATA.ap || {})[a.id], zc, k, vb);
+    out += simple ? runwayLines(a, (GROUND_DATA.ap || {})[a.id], zc, k) : airportDiagram(a, (GROUND_DATA.ap || {})[a.id], zc, k, vb);
   }
   return out;
 }
