@@ -343,7 +343,7 @@ function render(keepView){
     });
   }
   // ---- 机场道面（GND 风格示意，放大后出现） ----
-  if (diagOn) g += groundLayer(zc, vb);
+  g += groundLayer(zc, vb);
   // ---- 机场（常显：点 + 中文名 ICAO 单行，密集区自动错位 + 引线） ----
   if (layerOn.apt) {
     const boxes = [];
@@ -522,8 +522,15 @@ function runwayLines(a, g, zc, k){
   if (!list.length) return "";
   let out = "";
   for (const rw of list) {
-    const [x1, y1] = pt(rw.le), [x2, y2] = pt(rw.he);
-    if (Math.hypot(x2 - x1, y2 - y1) < 1e-4) continue;
+    let [x1, y1] = pt(rw.le), [x2, y2] = pt(rw.he);
+    let dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+    if (L < 1e-7) continue;
+    const minL = 7 / zc;                            // 至少 7px，全国视角也看得到
+    if (L < minL) {
+      const s = minL / L, cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+      dx *= s; dy *= s;
+      x1 = cx - dx / 2; y1 = cy - dy / 2; x2 = cx + dx / 2; y2 = cy + dy / 2;
+    }
     const wpx = Math.max(rw.w * k, 2.2 / zc);
     out += `<line x1="${nf(x1)}" y1="${nf(y1)}" x2="${nf(x2)}" y2="${nf(y2)}" stroke="#93a2b2" stroke-width="${wpx}" stroke-linecap="round" opacity=".95"/>`;
   }
@@ -739,7 +746,6 @@ function jumpToAirport(id){
 function groundLayer(zc, vb){
   if (!layerOn.apt) return '';
   const k = proj.scale / 111320;
-  if (k * zc < 0.006) return '';              // 约 1px≤170m 起画跑道细线
   const simple = k * zc < DIAG_PPM;                 // 还没到道面尺度：只画跑道示意
   const W = vb.x1 - vb.x0, H = vb.y1 - vb.y0;
   let out = '';
