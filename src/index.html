@@ -419,6 +419,8 @@ function render(keepView){
     return [x0, y0, x1, y1];
   };
   const visible = (b) => b[2] > vb.x0 && b[0] < vb.x1 && b[3] > vb.y0 && b[1] < vb.y1;
+  // 机场标注也只画完整落在视窗里的：贴边只露半截的名字不画
+  const inViewRect = (r) => r[0] >= vb.x0 && r[0] + r[2] <= vb.x1 && r[1] >= vb.y0 && r[1] + r[3] <= vb.y1;
   const bboxPx = (b) => [b[2] - b[0], b[3] - b[1]];
   // 浮在画布上的固定 UI（图层开关 / 图例 / 缩放按钮 / 右上频率牌）也占位：
   // 把它们的屏幕矩形换算成世界坐标，标注避让时一并绕开，不再压在面板底下
@@ -669,13 +671,15 @@ function render(keepView){
         const y0 = y + (dy - fs1) / zc;
         const r = [x0, y0, bw, bh];
         const hit = boxes.some(q => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1]);
-        if (!pick) pick = { dx, dy, anc, r };
-        if (!hit) { pick = { dx, dy, anc, r }; break; }
+        const fits = inViewRect(r);
+        if (!pick) pick = { dx, dy, anc, r, fits };
+        if (!hit && fits) { pick = { dx, dy, anc, r, fits }; break; }
+        if (!pick.fits && fits) pick = { dx, dy, anc, r, fits };
       }
       boxes.push(pick.r);
-      // 所有候选位都压在固定 UI 上时，这个机场名干脆不画（点还在，只是被面板挡住）
+      // 找不到既不压面板、又完整在视窗内的位置时，这个机场名不画（点还在）
       const underUI = uiSeed.some(q => pick.r[0] < q[0] + q[2] && pick.r[0] + pick.r[2] > q[0] && pick.r[1] < q[1] + q[3] && pick.r[1] + pick.r[3] > q[1]);
-      if (underUI) return;
+      if (underUI || !inViewRect(pick.r)) return;
       const lx = x + pick.dx / zc, ly = y + pick.dy / zc;
       if (Math.hypot(pick.dx, pick.dy) > 18) {
         g += `<line x1="${nf(x)}" y1="${nf(y)}" x2="${nf(lx)}" y2="${nf(ly)}" stroke="#5f7285" stroke-width="${0.8 / zc}" stroke-opacity=".7"/>`;
@@ -699,14 +703,14 @@ function render(keepView){
   }
 
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  svg.innerHTML = `<g id="world">${g}${placeLabels(labels, aptBoxes)}</g>`;
+  svg.innerHTML = `<g id="world">${g}${placeLabels(labels, aptBoxes, uiSeed)}</g>`;
   applyView();
   bindPicks();
 }
 
 // 标注避让：按优先级贪心放置。每个空域标注带一组多边形内部候选锚点，
 // 一条标签与已放置内容冲突时换锚点、缩成「只留频率」，都不行才丢弃。
-function placeLabels(items, seed){
+function placeLabels(items, seed, ui){
   items.sort((a, b) => (b.prio - a.prio) || ((b.area || 0) - (a.area || 0)));
   const placed = (seed || []).map(r => r.slice());
   const fsr = Math.max(1, zoom);
@@ -737,24 +741,44 @@ function placeLabels(items, seed){
   const rectOf = (b, x, y, fs) => [x - b.w / 2 / fsr - 1.2 / fsr, y - fs * .95 / fsr, (b.w + 2.4) / fsr, (b.h + 1.6) / fsr];
   // 只放完整落在视窗里的标注：贴边只露出一半的标签直接不画（既不裁字，也不随平移滑动）
   const inViewRect = r => r[0] >= vw.x0 && r[0] + r[2] <= vw.x1 && r[1] >= vw.y0 && r[1] + r[3] <= vw.y1;
+  const uiHit = r => (ui || []).some(q => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1]);
   const chosen = new Map();
-  // 第一遍：有旧落点的标注先占住原位（位置永不漂移，除非被更高优先级的旧标注占了这里的死角）
+  const stickyMiss = new Map();   // 旧落点没占住的原因：edge/ui = 暂时被挡，保持不动；crowd = 真挤不下，允许重排
+  // 第一遍：有旧落点的标注先占住原位，位置不漂移
   for (const it of items) {
     const prev = it.obj && LABEL_POS.get(it.obj);
     if (!prev) continue;
+    let reason = 'crowd', ok = false, b0 = null;
     for (const v of it.variants) {
       const b = mk(it, v);
       if (!b.lines.length) continue;
+      b0 = b;
       const r = rectOf(b, prev.x, prev.y, it.fs);
-      if (!inViewRect(r) || collides(r)) continue;
+      if (!inViewRect(r)) { reason = 'edge'; continue; }
+      if (uiHit(r)) { reason = 'ui'; continue; }
+      if (collides(r)) { reason = 'crowd'; continue; }
       placed.push(r);
       chosen.set(it, {b, x: prev.x, y: prev.y});
+      ok = true;
       break;
     }
+    if (!ok) {
+      // 文字块本身变高（例如放大后多出高度带一行）才允许重排一次；其它冲突一律先隐藏，保持位置不动
+      const grew = reason === 'crowd' && prev.h != null && b0 && b0.h > prev.h + 0.5;
+      stickyMiss.set(it, grew ? 'grow' : (reason === 'crowd' ? 'blocked' : reason));
+    }
   }
-  // 第二遍：其余标注按固定锚点顺序找空位
+  // 第二遍：新标注按固定锚点顺序找空位；旧位被边缘/面板挡住的直接隐藏，不换位
   for (const it of items) {
     if (chosen.has(it)) continue;
+    const miss = stickyMiss.get(it);
+    if (miss && miss !== 'grow') {
+      dropped++;
+      const k0 = it.kind || 'other';
+      (byKind[k0] = byKind[k0] || {drawn: 0, dropped: 0}).dropped++;
+      continue;
+    }
+    if (miss === 'grow' && it.obj) LABEL_POS.delete(it.obj);
     let done = null;
     for (const v of it.variants) {
       const b = mk(it, v);
@@ -782,7 +806,7 @@ function placeLabels(items, seed){
     const done = chosen.get(it);
     if (!done) continue;
     drawn++;
-    if (it.obj) LABEL_POS.set(it.obj, {x: done.x, y: done.y});
+    if (it.obj) LABEL_POS.set(it.obj, {x: done.x, y: done.y, h: done.b.h});
     (byKind[it.kind || 'other'] = byKind[it.kind || 'other'] || {drawn: 0, dropped: 0}).drawn++;
     for (const ln of done.b.lines) {
       const sw = (ln.cls === 'freqlbl' ? 2.8 : ln.cls === 'lblnote' ? 2 : 2.4) / fsr;

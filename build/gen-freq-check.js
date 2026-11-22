@@ -83,7 +83,8 @@ this.API = {
   get proj(){ return proj; },
   setZoom(z){ zoom = z; },
   setView(tx, ty){ proj.tx = tx; proj.ty = ty; },
-  get stats(){ return window.__labelStats; }
+  get stats(){ return window.__labelStats; },
+  resetLabels(){ LABEL_POS = new WeakMap(); }
 };
 `;
 vm.runInContext(prelude, sandbox);
@@ -102,7 +103,8 @@ const SHOTS = [
   { name: '乌鲁木齐 z=8', lat: 43.9, lon: 87.5, z: 8 }
 ];
 
-function snap(s) {
+function snap(s, keepSticky) {
+  if (!keepSticky) API.resetLabels();
   API.render(false);                     // 回到全国基准投影、zoom=1
   const P0 = API.proj;
   const [cx, cy] = API.pt([s.lat, s.lon]);
@@ -224,6 +226,40 @@ for (const s of SHOTS) {
   const ui = overlayHits(r.svg);
   rows.push({ ...s, svgFile, stats: r.stats, fr, cov, ui, svg: r.svg });
 }
+// ---------- 稳定性：同一视角平移一小段，标注世界坐标不应漂移 ----------
+function worldTexts() {
+  const re = /<text class="([^"]*)" x="([\d.\-]+)" y="([\d.\-]+)"[^>]*>([^<]*)<\/text>/g;
+  let m; const out = [];
+  while ((m = re.exec(svgShim.innerHTML))) out.push({ cls: m[1], t: m[4], x: +m[2], y: +m[3] });
+  return out;
+}
+function uniqueCommon(a, b) {
+  const cnt = {};
+  const bump = x => { const k = x.cls + '|' + x.t; cnt[k] = (cnt[k] || 0) + 1; };
+  a.forEach(bump); b.forEach(bump);
+  return [a.filter(x => cnt[x.cls + '|' + x.t] === 2), b.filter(x => cnt[x.cls + '|' + x.t] === 2)];
+}
+function panDrift() {
+  snap({ name: 'x', lat: 39.9, lon: 116.2, z: 20 });
+  const a0 = worldTexts();
+  snap({ name: 'x', lat: 40.3, lon: 116.6, z: 20 }, true);
+  const b0 = worldTexts();
+  const [a, b] = uniqueCommon(a0, b0);
+  const m = new Map(a.map(x => [x.cls + '|' + x.t, x]));
+  let common = 0, moved = 0;
+  const names = [];
+  for (const x of b) {
+    const y = m.get(x.cls + '|' + x.t);
+    if (!y) continue;
+    common++;
+    const d = Math.hypot(x.x - y.x, x.y - y.y);
+    if (d > 0.01) { moved++; if (names.length < 6) names.push(x.t + ':' + d.toFixed(1)); }
+  }
+  if (moved) console.log('  漂移样例', names.join(' '));
+  return { common, moved };
+}
+const drift = panDrift();
+
 const html = `<!doctype html><meta charset="utf-8"><title>频率标注自检 · SKYWAVE</title>
 <style>
 body{margin:0;background:#060a0f;color:#dfe8f2;font:13px/1.5 -apple-system,"Noto Sans SC",system-ui,sans-serif}
@@ -242,7 +278,7 @@ figcaption em{color:#ffd479;font-style:normal;float:right}
 svg{display:block;width:100%;height:auto;background:#070b10}
 </style>
 <header><h1>频率标注自检 · ${SHOTS.length} 张快照</h1>
-<small>画布 ${W}×${H} · 标注合计 画出 ${totalDrawn} / 丢弃 ${totalDropped} · 绿色=视窗内主用频率全部可读</small></header>
+<small>画布 ${W}×${H} · 标注合计 画出 ${totalDrawn} / 丢弃 ${totalDropped} · 平移漂移 ${drift.moved}/${drift.common}（越少越稳）· 红色虚线框=固定UI占位</small></header>
 <div class="g">${rows.map(r => `<figure><figcaption><b>${r.name}</b> z=${r.z} <em>标注 ${r.stats.drawn}/${r.stats.total} · 频率行 ${r.fr} · 覆盖 ${r.cov.got}/${r.cov.want}</em></figcaption>${r.svg}</figure>`).join('\n')}</div>
 <table><thead><tr><th>快照</th><th>z</th><th>标注画出/丢弃</th><th>视窗内带频率对象</th><th>主用频率全部可读</th><th>分层 画出/候选 · 丢弃</th></tr></thead><tbody>
 ${rows.map(r => `<tr><td>${r.name}</td><td>${r.z}</td><td>${r.stats.drawn} / ${r.stats.dropped}</td><td>${r.cov.want}</td>
@@ -251,7 +287,7 @@ ${rows.map(r => `<tr><td>${r.name}</td><td>${r.z}</td><td>${r.stats.drawn} / ${r
 </tbody></table>`;
 const out = process.env.OUT_FILE || path.join(process.env.HOME, '频率标注自检.html');
 fs.writeFileSync(out, html);
-console.log('shots', rows.length, 'drawn', totalDrawn, 'dropped', totalDropped, '->', out);
+console.log('shots', rows.length, 'drawn', totalDrawn, 'dropped', totalDropped, '平移漂移', drift.moved + '/' + drift.common, '->', out);
 for (const r of rows) {
   const bk = Object.entries(r.stats.byKind || {}).map(([a, b]) => `${a}:${b.drawn}/${b.drawn + b.dropped}`).join(' ');
   console.log(`${r.name.padEnd(22)} z=${String(r.z).padEnd(4)} 标注 ${r.stats.drawn}/${r.stats.total} 频率行 ${r.fr}  压UI ${r.ui ? r.ui.hits : '-'}  ${bk}${(r.stats.lost || []).length ? '  丢弃:' + r.stats.lost.join('、') : ''}`);

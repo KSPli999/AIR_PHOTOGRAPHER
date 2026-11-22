@@ -64,7 +64,7 @@ work/airspace/
 ├── build/                  生成与预览脚本（见 §6）
 │   └── gen-freq-check.js   频率标注自检：真实投影出快照 SVG + 重叠/丢弃统计
 ├── apk/                    Android 工程 + build.sh + keystore + 产物
-│   ├── AndroidManifest.xml versionCode 26 / versionName 2026.12.25.4
+│   ├── AndroidManifest.xml versionCode 27 / versionName 2026.12.25.5
 │   ├── src/app/dsh/airspace/MainActivity.java  WebView 壳（assets/index.html）
 │   ├── assets/index.html   构建时覆盖
 │   └── 空域频率图.apk      740 KB
@@ -173,7 +173,7 @@ zc = zoom                       // 用户缩放
 | `updateBoard(a)` | 右上角固定频率牌 `#aptBoard`，仅 `diagOn` 时按视口中心最近的机场显示 |
 | `showArea/showSector/showTower` | 详情面板：主/备用频率、高度带、开放条件 |
 | `jumpToAirport(id)` / `fitAirportZoom(a)` | 跳转到机场并算合适倍率（含深链 `#apt=ZBAA`） |
-| `placeLabels(items, seed)` | 空域标注两遍避让：① 有旧落点（`LABEL_POS`）的标注先按原位占位，位置不漂移；② 其余按 ≤20 个多边形内部固定锚点找空位，挤不下时先省高度带、再省名称，最后只留频率；只放完整落在视窗内的标注（不裁字），种子矩形包含浮层 UI（图层开关/图例/缩放/频率牌），换投影时清空落点缓存 |
+| `placeLabels(items, seed)` | 空域标注两遍避让：① 有旧落点（`LABEL_POS`）的标注先按原位占位，位置不漂移；② 其余按 ≤20 个多边形内部固定锚点找空位，挤不下时先省高度带、再省名称，最后只留频率；只放完整落在视窗内的标注（不裁字）；旧落点被面板/边缘挡住时**隐藏而不是换位**（只有文字块变高才允许重排一次），所以平移缩放时字不会乱跳；种子矩形包含浮层 UI（图层开关/图例/缩放/频率牌），换投影时清空落点缓存 |
 | `anchorsInPoly(o)` | 多边形内部候选锚点（离边界远 + 靠形心排序），WeakMap 缓存，换投影自动失效 |
 | `callShort / sectorShort / subCfg` | 单位简称、区调扇区短名、进近扇区跑道构型后缀 |
 | `vband / vtop` | 高度带压缩显示（`12 500 m–7 800 m(exclusive)` → `12 500–7 800 m`）、高度上界排序 |
