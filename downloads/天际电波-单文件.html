@@ -556,7 +556,7 @@ function runwayLines(a, g, zc, k){
   }
   return out;
 }
-function airportDiagram(a, g, zc, k, vb){
+function airportDiagram(a, g, zc, k, vb, lite){
   const rwys = runwaysOf(a, g);
   if (!rwys.length) return '';
   const fs = n => (n / zc).toFixed(5);
@@ -575,7 +575,7 @@ function airportDiagram(a, g, zc, k, vb){
   // 机坪 / 滑行道底图（OSM 道面，放大后才画）
   if (g) {
     const poly = ring => ring.map(q => { const [x, y] = pt(q); return nf(x) + "," + nf(y); }).join(" ");
-    for (const b of (g.bd || [])) {
+    for (const b of (lite ? [] : (g.bd || []))) {
       if (!b.r || b.r.length < 3) continue;
       out += `<polygon points="${poly(b.r)}" fill="none" stroke="#26333f" stroke-width="${fs(1)}" stroke-dasharray="${fs(6)} ${fs(4)}"/>`;
     }
@@ -583,7 +583,7 @@ function airportDiagram(a, g, zc, k, vb){
       if (!r.r || r.r.length < 3) continue;
       out += `<polygon points="${poly(r.r)}" fill="#37434f" stroke="#4b5865" stroke-width="${fs(0.5)}" stroke-opacity=".7"/>`;
     }
-    for (const t of (g.twy || [])) {
+    for (const t of (lite ? [] : (g.twy || []))) {
       if (!t.p || t.p.length < 2) continue;
       const pts = t.p.map(q => { const [x, y] = pt(q); return nf(x) + "," + nf(y); }).join(" ");
       out += `<polyline points="${pts}" fill="none" stroke="#4b5865" stroke-width="${Math.max(M(t.w || 23), 4 / zc)}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
@@ -622,17 +622,17 @@ function airportDiagram(a, g, zc, k, vb){
 
     // 边线：距道面边缘 1.5m
     const inset = Math.max(M(1.5), W * .05);
-    for (const sgn of [1, -1]) {
+    if (!lite) for (const sgn of [1, -1]) {
       const o = sgn * (hw - inset);
       out += `<line x1="${nf(x1 + nx * o + ux * M(2))}" y1="${nf(y1 + ny * o + uy * M(2))}" x2="${nf(x2 + nx * o - ux * M(2))}" y2="${nf(y2 + ny * o - uy * M(2))}" stroke="#dbe6f2" stroke-width="${fs(0.9)}" stroke-opacity=".75"/>`;
     }
 
     // 中线虚线：两端各留 60m
     const gap = Math.min(lead, lenM * .1);
-    out += `<line x1="${nf(x1 + ux * M(gap))}" y1="${nf(y1 + uy * M(gap))}" x2="${nf(x2 - ux * M(gap))}" y2="${nf(y2 - uy * M(gap))}" stroke="#eef4fa" stroke-width="${fs(0.8)}" stroke-dasharray="${nf(M(30))} ${nf(M(20))}" stroke-opacity=".6"/>`;
+    if (!lite) out += `<line x1="${nf(x1 + ux * M(gap))}" y1="${nf(y1 + uy * M(gap))}" x2="${nf(x2 - ux * M(gap))}" y2="${nf(y2 - uy * M(gap))}" stroke="#eef4fa" stroke-width="${fs(0.8)}" stroke-dasharray="${nf(M(30))} ${nf(M(20))}" stroke-opacity=".6"/>`;
 
     // 两端标记：入口条纹 + 瞄准点 + 接地区
-    for (const [ex, ey, dir] of [[x1, y1, 1], [x2, y2, -1]]) {
+    if (!lite) for (const [ex, ey, dir] of [[x1, y1, 1], [x2, y2, -1]]) {
       const bx0 = (s, o) => ex + ux * dir * M(s) + nx * o;
       const by0 = (s, o) => ey + uy * dir * M(s) + ny * o;
       // 入口“钢琴键”：8 条，条宽 = 缝宽
@@ -680,8 +680,8 @@ function airportDiagram(a, g, zc, k, vb){
       if (!d) return;
       text(d, ex + ux * dir * M(52), ey + uy * dir * M(52), 9.5, '#ffffff', rot);
     };
-    numAt(rw.la, x1, y1, 1);
-    numAt(rw.lb, x2, y2, -1);
+    if (!lite) numAt(rw.la, x1, y1, 1);
+    if (!lite) numAt(rw.lb, x2, y2, -1);
 
     // ILS 标牌：跑道端外侧，CAT + 频率
     const ilsAt = (d, ex, ey, dir) => {
@@ -691,12 +691,12 @@ function airportDiagram(a, g, zc, k, vb){
       const txt = `${cat} ${e.ils.locF}`;
       text(txt, ex - ux * dir * M(34), ey - uy * dir * M(34), 7, '#7fe3ff', rot);
     };
-    ilsAt(rw.la, x1, y1, 1);
-    ilsAt(rw.lb, x2, y2, -1);
+    if (!lite) ilsAt(rw.la, x1, y1, 1);
+    if (!lite) ilsAt(rw.lb, x2, y2, -1);
 
     // 塔台按跑道分频：多套塔台时标在该跑道外侧
     const twrs = a.twr || [];
-    if (twrs.length > 1) {
+    if (!lite && twrs.length > 1) {
       const hit = twrs.filter(t => (t.rwys || []).includes(rw.la) || (t.rwys || []).includes(rw.lb));
       if (hit.length) {
         const txt = 'TWR ' + hit.map(t => t.f).join('/');
@@ -736,13 +736,32 @@ function jumpToAirport(id){
 function groundLayer(zc, vb){
   if (!layerOn.apt) return '';
   const k = proj.scale / 111320;
-  const simple = k * zc < DIAG_PPM;                 // 还没到道面尺度：只画跑道示意
   const W = vb.x1 - vb.x0, H = vb.y1 - vb.y0;
   let out = '';
   for (const a of D.airports) {
     const [x, y] = pt(a.arp);
     if (x < vb.x0 - W * .35 || x > vb.x1 + W * .35 || y < vb.y0 - H * .35 || y > vb.y1 + H * .35) continue;
-    out += simple ? runwayLines(a, (GROUND_DATA.ap || {})[a.id], zc, k) : airportDiagram(a, (GROUND_DATA.ap || {})[a.id], zc, k, vb);
+    const g2 = (GROUND_DATA.ap || {})[a.id];
+    // 任何倍率都画完整机场图；太小的时候按最小 52px 放大显示（像航图小图）
+    const list = runwaysOf(a, g2);
+    let span = 0;
+    if (list.length) {
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (const r of list) for (const q of [r.le, r.he]) {
+        const [px2, py2] = pt(q);
+        if (px2 < x0) x0 = px2; if (px2 > x1) x1 = px2;
+        if (py2 < y0) y0 = py2; if (py2 > y1) y1 = py2;
+      }
+      span = Math.max(x1 - x0, y1 - y0) * zc;
+    }
+    if (span > 0 && span < 52) {
+      const sc = 52 / span;
+      const [cx2, cy2] = pt(a.arp);
+      out += `<g transform="translate(${nf(cx2)},${nf(cy2)}) scale(${sc.toFixed(3)}) translate(${nf(-cx2)},${nf(-cy2)})">`
+        + airportDiagram(a, g2, zc * sc, k, vb, true) + `</g>`;
+    } else {
+      out += airportDiagram(a, g2, zc, k, vb);
+    }
   }
   return out;
 }
