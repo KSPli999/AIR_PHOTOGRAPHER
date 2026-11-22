@@ -173,7 +173,7 @@ zc = zoom                       // 用户缩放
 | `updateBoard(a)` | 右上角固定频率牌 `#aptBoard`，仅 `diagOn` 时按视口中心最近的机场显示 |
 | `showArea/showSector/showTower` | 详情面板：主/备用频率、高度带、开放条件 |
 | `jumpToAirport(id)` / `fitAirportZoom(a)` | 跳转到机场并算合适倍率（含深链 `#apt=ZBAA`） |
-| `placeLabels(items, seed)` | 空域标注避让：每个标注带 ≤20 个多边形内部候选锚点 + 6 种微调，按优先级贪心放置；挤不下时先省高度带、再省名称，最后只留频率 |
+| `placeLabels(items, seed)` | 空域标注避让：每个标注带 ≤20 个多边形内部候选锚点 + 6 种微调，按优先级贪心放置；挤不下时先省高度带、再省名称，最后只留频率；种子矩形里包含浮层 UI（图层开关/图例/缩放按钮/频率牌），标注不会钻进面板底下 |
 | `anchorsInPoly(o)` | 多边形内部候选锚点（离边界远 + 靠形心排序），WeakMap 缓存，换投影自动失效 |
 | `callShort / sectorShort / subCfg` | 单位简称、区调扇区短名、进近扇区跑道构型后缀 |
 | `vband / vtop` | 高度带压缩显示（`12 500 m–7 800 m(exclusive)` → `12 500–7 800 m`）、高度上界排序 |

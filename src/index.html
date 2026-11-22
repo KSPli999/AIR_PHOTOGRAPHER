@@ -136,8 +136,7 @@
       <div><i style="background:#39d0ff"></i>进近管制区</div>
       <div><i style="background:#fb7185"></i>塔台管制区</div>
       <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
-      <div style="margin-top:3px;color:#5d7386">放大后频率直接标在所属区块：区调按高度层自上而下叠列</div>
-      <div style="color:#5d7386">双指缩放 · 拖动平移 · 放大到机场显示跑道与频率</div>
+      <div style="margin-top:3px;color:#5d7386">放大后频率标在所属区块，叠层按高度自上而下</div>
     </div>
     <div id="aptBoard"></div>
     <div id="zoom">
@@ -668,6 +667,9 @@ function render(keepView){
         if (!hit) { pick = { dx, dy, anc, r }; break; }
       }
       boxes.push(pick.r);
+      // 所有候选位都压在固定 UI 上时，这个机场名干脆不画（点还在，只是被面板挡住）
+      const underUI = uiSeed.some(q => pick.r[0] < q[0] + q[2] && pick.r[0] + pick.r[2] > q[0] && pick.r[1] < q[1] + q[3] && pick.r[1] + pick.r[3] > q[1]);
+      if (underUI) return;
       const lx = x + pick.dx / zc, ly = y + pick.dy / zc;
       if (Math.hypot(pick.dx, pick.dy) > 18) {
         g += `<line x1="${nf(x)}" y1="${nf(y)}" x2="${nf(lx)}" y2="${nf(ly)}" stroke="#5f7285" stroke-width="${0.8 / zc}" stroke-opacity=".7"/>`;
