@@ -302,7 +302,7 @@ function render(keepView){
     D.sectors.forEach((s, i) => {
       g += `<path class="poly" data-kind="sec" data-i="${i}" d="${pathAll(s)}"
         fill="#a78bfa" fill-opacity="${diagOn ? 0 : .07}" stroke="#6d5fae" stroke-width="${(0.8 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-opacity=".8"/>`;
-      if (zc >= 2.2 && !diagOn) {
+      if (zc >= 1.9 && !diagOn) {
         const [bw, bh] = bboxPx(s.pts);
         const [lx, ly] = pt(centroid(s.pts));
         if (bw > 34 && bh > 20) {
@@ -318,7 +318,7 @@ function render(keepView){
       g += `<path class="poly" data-kind="ap" data-i="${i}" d="${pathAll(a)}"
         fill="#39d0ff" fill-opacity="${diagOn ? 0 : (sub ? .05 : .08)}" stroke="#39d0ff" stroke-width="${(sub ? 0.8 : 1.4) / Math.max(1, zc / 1.6)}"
         stroke-opacity="${sub ? .45 : .8}" stroke-dasharray="${((sub ? 3 : 7) / zc).toFixed(3)} ${((sub ? 5 : 4) / zc).toFixed(3)}"/>`;
-      if (zc >= (sub ? 3.0 : 1.9) && !diagOn) {
+      if (zc >= (sub ? 2.4 : 1.6) && !diagOn) {
         const [bw, bh] = bboxPx(a.pts);
         const [lx, ly] = pt(centroid(a.pts));
         if (bw > 34 && bh > 20) {
@@ -333,11 +333,13 @@ function render(keepView){
     D.ctr.forEach((c, i) => {
       g += `<path class="poly" data-kind="twr" data-i="${i}" d="${pathAll(c)}" fill="#fb7185" fill-opacity="${diagOn ? 0 : .10}"
         stroke="#fb7185" stroke-width="${(1 / zc).toFixed(3)}" stroke-opacity=".7"/>`;
-      if (zc >= 3.6 && !diagOn) {
+      if (zc >= 2.6 && !diagOn) {
         const [bw, bh] = bboxPx(c.pts);
         if (bw > 20 && bh > 16) {
           const [lx, ly] = pt(centroid(c.pts));
-          addLabel(lx, ly, '塔台区', '#ffb3c0', 'lbl sm', 1, 9);
+          const ap = D.airports.find(x => x.id === c.icao);
+          const tw = ap ? (ap.comms.find(x => x.type === 'TWR') || {}).f || '' : '';
+          addLabel(lx, ly, '塔台区', '#ffb3c0', 'lbl sm', 1, 9, tw, '#ff8fa3');
         }
       }
     });
@@ -375,10 +377,6 @@ function render(keepView){
         g += `<line x1="${nf(x)}" y1="${nf(y)}" x2="${nf(lx)}" y2="${nf(ly)}" stroke="#5f7285" stroke-width="${0.8 / zc}" stroke-opacity=".7"/>`;
       }
       g += `<text x="${nf(lx)}" y="${nf(ly)}" text-anchor="${pick.anc}" fill="#ffe6b8" style="font-size:${fs1 / zc}px;font-weight:700;paint-order:stroke;stroke:#081016;stroke-width:${2.2 / zc}px">${esc(label)}</text>`;
-      if (zc >= 2.6) {
-        const tw = (a.comms.find(c => c.type === "TWR") || {}).f || "";
-        if (tw) g += `<text x="${nf(lx)}" y="${nf(ly + 9 / zc)}" text-anchor="${pick.anc}" fill="#c8ad72" style="font-size:${7 / zc}px;font-weight:600;paint-order:stroke;stroke:#081016;stroke-width:${2 / zc}px">${esc(tw)}</text>`;
-      }
     });
   }
 
