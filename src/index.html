@@ -370,6 +370,9 @@ function anchorsInPoly(o){
 
 // ---------- state ----------
 const layerOn = {acc: true, tma: true, twr: true, apt: true};
+// 每个空域标注记住上一次落点：平移/缩放时先回到原位，避免字到处跳
+let LABEL_POS = new WeakMap();
+let lastProjKey = '';
 let zoom = 1, focus = null, lastRenderZoom = 1;
 
 // ---------- render ----------
@@ -399,6 +402,9 @@ function render(keepView){
   clampView();   // 先夹紧视图，标注裁剪范围才准确
   const zc = zoom;
   lastRenderZoom = zc;
+  // 换投影（点「定位」跳到机场等）时旧的落点世界坐标全部失效，整批重排
+  const pkey = proj.lat0 + ',' + proj.lon0 + ',' + proj.scale.toFixed(4) + ',' + proj.w + ',' + proj.h;
+  if (pkey !== lastProjKey) { lastProjKey = pkey; LABEL_POS = new WeakMap(); }
   const vb = viewBounds();
   // 进入机场道面尺度后，空域填充会铺满整个视窗，改为只画边界
   const diagOn = proj.scale * zc / 111320 >= DIAG_PPM;
@@ -441,7 +447,7 @@ function render(keepView){
     const anchors = anchorsInPoly(o).filter(a => a.x > vb.x0 && a.x < vb.x1 && a.y > vb.y0 && a.y < vb.y1);
     if (!anchors.length) return;
     labels.push({
-      anchors, variants: mkLabelVariants(cfg.header || '', members),
+      obj: o, anchors, variants: mkLabelVariants(cfg.header || '', members),
       prio: cfg.prio, fs: cfg.fs || 9, area: cfg.area || 0, kind: cfg.kind || '',
       nameFill: cfg.nameFill || '#cfe6f5', freqFill: cfg.freqFill || '#39d0ff', noteFill: cfg.noteFill || '#93a9bb'
     });
@@ -708,61 +714,75 @@ function placeLabels(items, seed){
   let out = '';
   let dropped = 0, drawn = 0;
   const byKind = {}, lost = [];
-  // 候选微调（屏幕像素）：正中 → 上下挪一行 → 左右挪半截
-  const NUDGE = [[0, 0], [0, 11], [0, -11], [-9, 0], [9, 0], [0, 20]];
   const collides = r => placed.some(p => r[0] < p[0] + p[2] && r[0] + r[2] > p[0] && r[1] < p[1] + p[3] && r[1] + r[3] > p[1]);
-  for (const it of items) {
-    // 每行：文字、字号(屏幕px)、样式类、填充、相对首行基线的偏移(屏幕px)
-    const build = v => {
-      const lines = [];
-      let dy = 0, w = 0;
-      const put = (text, size, cls, fill) => {
-        if (!text) return;
-        lines.push({text, size, cls, fill, dy});
-        w = Math.max(w, textW(text, size));
-        dy += size * 1.16;
-      };
-      if (v.header) put(v.header, it.fs * 1.02, 'lbl', it.nameFill);
-      (v.members || []).forEach((m, i) => {
-        if (i) dy += it.fs * 0.2;
-        put(m.name, it.fs, 'lbl sm', it.nameFill);
-        put(m.main, it.fs * 1.16, 'freqlbl', it.freqFill);
-        put(m.note, it.fs * 0.86, 'lblnote', it.noteFill);
-      });
-      return {lines, w, h: dy};
+  // 每行：文字、字号(屏幕px)、样式类、填充、相对首行基线的偏移(屏幕px)
+  const mk = (it, v) => {
+    const lines = [];
+    let dy = 0, w = 0;
+    const put = (text, size, cls, fill) => {
+      if (!text) return;
+      lines.push({text, size, cls, fill, dy});
+      w = Math.max(w, textW(text, size));
+      dy += size * 1.16;
     };
+    if (v.header) put(v.header, it.fs * 1.02, 'lbl', it.nameFill);
+    (v.members || []).forEach((m, i) => {
+      if (i) dy += it.fs * 0.2;
+      put(m.name, it.fs, 'lbl sm', it.nameFill);
+      put(m.main, it.fs * 1.16, 'freqlbl', it.freqFill);
+      put(m.note, it.fs * 0.86, 'lblnote', it.noteFill);
+    });
+    return {lines, w, h: dy};
+  };
+  const rectOf = (b, x, y, fs) => [x - b.w / 2 / fsr - 1.2 / fsr, y - fs * .95 / fsr, (b.w + 2.4) / fsr, (b.h + 1.6) / fsr];
+  // 只放完整落在视窗里的标注：贴边只露出一半的标签直接不画（既不裁字，也不随平移滑动）
+  const inViewRect = r => r[0] >= vw.x0 && r[0] + r[2] <= vw.x1 && r[1] >= vw.y0 && r[1] + r[3] <= vw.y1;
+  const chosen = new Map();
+  // 第一遍：有旧落点的标注先占住原位（位置永不漂移，除非被更高优先级的旧标注占了这里的死角）
+  for (const it of items) {
+    const prev = it.obj && LABEL_POS.get(it.obj);
+    if (!prev) continue;
+    for (const v of it.variants) {
+      const b = mk(it, v);
+      if (!b.lines.length) continue;
+      const r = rectOf(b, prev.x, prev.y, it.fs);
+      if (!inViewRect(r) || collides(r)) continue;
+      placed.push(r);
+      chosen.set(it, {b, x: prev.x, y: prev.y});
+      break;
+    }
+  }
+  // 第二遍：其余标注按固定锚点顺序找空位
+  for (const it of items) {
+    if (chosen.has(it)) continue;
     let done = null;
     for (const v of it.variants) {
-      const b = build(v);
+      const b = mk(it, v);
       if (!b.lines.length) continue;
       for (const a of it.anchors) {
-        for (const [nx, ny] of NUDGE) {
-          // 贴边的标注整体向视窗内收，避免被裁掉半个字
-          let x = a.x + nx / fsr, y = a.y + ny / fsr;
-          const hw = (b.w / 2 + 2) / fsr, hh = (b.h + 2) / fsr;
-          x = Math.min(Math.max(x, vw.x0 + hw), vw.x1 - hw);
-          y = Math.min(Math.max(y, vw.y0 + it.fs / fsr), vw.y1 - hh);
-          const rect = [x - b.w / 2 / fsr - 1.2 / fsr, y - it.fs * .95 / fsr, (b.w + 2.4) / fsr, (b.h + 1.6) / fsr];
-          if (collides(rect)) continue;
-          placed.push(rect);
-          done = {b, x, y};
-          break;
-        }
-        if (done) break;
+        const r = rectOf(b, a.x, a.y, it.fs);
+        if (!inViewRect(r) || collides(r)) continue;
+        placed.push(r);
+        done = {b, x: a.x, y: a.y};
+        break;
       }
       if (done) break;
     }
-    if (!done) {
-      dropped++;
-      const k = it.kind || 'other';
-      (byKind[k] = byKind[k] || {drawn: 0, dropped: 0}).dropped++;
-      if (lost.length < 40) {
-        const v0 = it.variants[0] || {}, m0 = (v0.members || [])[0] || {};
-        lost.push((v0.header ? v0.header + ' ' : '') + (m0.name || m0.main || ''));
-      }
-      continue;
+    if (done) { chosen.set(it, done); continue; }
+    dropped++;
+    const k = it.kind || 'other';
+    (byKind[k] = byKind[k] || {drawn: 0, dropped: 0}).dropped++;
+    if (lost.length < 40) {
+      const v0 = it.variants[0] || {}, m0 = (v0.members || [])[0] || {};
+      lost.push((v0.header ? v0.header + ' ' : '') + (m0.name || m0.main || ''));
     }
+  }
+  // 第三遍：按优先级输出
+  for (const it of items) {
+    const done = chosen.get(it);
+    if (!done) continue;
     drawn++;
+    if (it.obj) LABEL_POS.set(it.obj, {x: done.x, y: done.y});
     (byKind[it.kind || 'other'] = byKind[it.kind || 'other'] || {drawn: 0, dropped: 0}).drawn++;
     for (const ln of done.b.lines) {
       const sw = (ln.cls === 'freqlbl' ? 2.8 : ln.cls === 'lblnote' ? 2 : 2.4) / fsr;

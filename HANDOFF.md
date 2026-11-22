@@ -64,7 +64,7 @@ work/airspace/
 ├── build/                  生成与预览脚本（见 §6）
 │   └── gen-freq-check.js   频率标注自检：真实投影出快照 SVG + 重叠/丢弃统计
 ├── apk/                    Android 工程 + build.sh + keystore + 产物
-│   ├── AndroidManifest.xml versionCode 25 / versionName 2026.12.25.3
+│   ├── AndroidManifest.xml versionCode 26 / versionName 2026.12.25.4
 │   ├── src/app/dsh/airspace/MainActivity.java  WebView 壳（assets/index.html）
 │   ├── assets/index.html   构建时覆盖
 │   └── 空域频率图.apk      740 KB
@@ -173,7 +173,7 @@ zc = zoom                       // 用户缩放
 | `updateBoard(a)` | 右上角固定频率牌 `#aptBoard`，仅 `diagOn` 时按视口中心最近的机场显示 |
 | `showArea/showSector/showTower` | 详情面板：主/备用频率、高度带、开放条件 |
 | `jumpToAirport(id)` / `fitAirportZoom(a)` | 跳转到机场并算合适倍率（含深链 `#apt=ZBAA`） |
-| `placeLabels(items, seed)` | 空域标注避让：每个标注带 ≤20 个多边形内部候选锚点 + 6 种微调，按优先级贪心放置；挤不下时先省高度带、再省名称，最后只留频率；种子矩形里包含浮层 UI（图层开关/图例/缩放按钮/频率牌），标注不会钻进面板底下 |
+| `placeLabels(items, seed)` | 空域标注两遍避让：① 有旧落点（`LABEL_POS`）的标注先按原位占位，位置不漂移；② 其余按 ≤20 个多边形内部固定锚点找空位，挤不下时先省高度带、再省名称，最后只留频率；只放完整落在视窗内的标注（不裁字），种子矩形包含浮层 UI（图层开关/图例/缩放/频率牌），换投影时清空落点缓存 |
 | `anchorsInPoly(o)` | 多边形内部候选锚点（离边界远 + 靠形心排序），WeakMap 缓存，换投影自动失效 |
 | `callShort / sectorShort / subCfg` | 单位简称、区调扇区短名、进近扇区跑道构型后缀 |
 | `vband / vtop` | 高度带压缩显示（`12 500 m–7 800 m(exclusive)` → `12 500–7 800 m`）、高度上界排序 |
@@ -255,7 +255,7 @@ cp 空域频率图.apk /sdcard/Download/天际电波.apk
 3. **OSM 取不到首都 T3 / 虹桥 T2** 等巨型 multipolygon 航站楼（bbox 5 万节点上限）。要补得改成 `/api/0.6/relation/{id}/full` 逐个取，现有 `build/fix-one-term.js` 是雏形。
 4. 道面几何是 OSM 的，个别机场机坪/滑行道有缺块或旧数据。
 5. 京津冀 / 长三角 / 珠三角 机场密集区，82 个机场标注仍有 8–30 处轻微重叠（`placeLabels` 尽力了）。
-6. 区域视角（z≈2–4）一次性放不下所有区调标签：华北/华东会丢弃 10–20% 的低优先级标注，
+6. 区域视角（z≈2–4）一次性放不下所有区调标签：华北/华东会丢弃 20–35% 的低优先级标注（标注位置优先稳定，不再为了多放而挪来挪去），
    终端区视角（z≥20）基本能全标，个别小扇区（如广州 AP02/AP08 的跑道构型变体）会被挤掉；
    丢注释义见 `build/gen-freq-check.js` 的统计。
 7. 中途 OSM 429 限流曾导致 15 个机场保留旧缓存；ZGDY、ZJQH 曾丢航站楼，用 `build/gen-term-fallback.js` 补回。
