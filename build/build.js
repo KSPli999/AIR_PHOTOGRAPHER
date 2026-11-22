@@ -16,6 +16,7 @@ let inject = `window.__EMBEDDED_DATA__ = ${JSON.stringify(data)};\n`;
 const rwyFile = path.join(root, 'data/RWY.json');
 if (fs.existsSync(rwyFile)) inject += `window.__RWY__ = ${fs.readFileSync(rwyFile, 'utf8')};\n`;
 const groundFile = path.join(root, 'data/GROUND.json');
+if (fs.existsSync(path.join(root, 'data/TERM.json'))) inject += `window.__TERM__ = ${fs.readFileSync(path.join(root, 'data/TERM.json'), 'utf8')};\n`;
 if (fs.existsSync(groundFile)) inject += `window.__GROUND__ = ${fs.readFileSync(groundFile, 'utf8')};\n`;
 const anchor = '<script>\nconst P = (lat, lon)';
 if (!html.includes(anchor)) throw new Error('注入失败：未找到脚本入口');

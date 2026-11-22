@@ -414,6 +414,7 @@ function grid(P, z, vb){
 // 跑道阈值：OurAirports（公有领域）；缺坐标时用 OSM 跑道线（ODbL）
 const RWY_DATA = window.__RWY__ || { rwy: {} };
 const GROUND_DATA = window.__GROUND__ || { ap: {} };
+const TERM_DATA = window.__TERM__ || { ap: {} };
 const DIAG_PPM = 0.05;   // 每屏幕像素 33 米以内才画道面
 function recipRwy(d){
   const m = /^(\d{1,2})([LRC]?)$/.exec(String(d || ''));
@@ -522,6 +523,17 @@ function airportDiagram(a, g, zc, k, vb){
       if (!t.p || t.p.length < 2) continue;
       const pts = t.p.map(q => { const [x, y] = pt(q); return nf(x) + "," + nf(y); }).join(" ");
       out += `<polyline points="${pts}" fill="none" stroke="#4b5865" stroke-width="${Math.max(M(t.w || 23), 4 / zc)}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
+    }
+    // 航站楼轮廓
+    for (const t of (TERM_DATA.ap[a.id] || [])) {
+      if (!t.r || t.r.length < 3) continue;
+      out += `<polygon points="${poly(t.r)}" fill="#233242" stroke="#5b7c96" stroke-width="${fs(1)}" stroke-opacity=".9"/>`;
+      if (t.n && t.n.length <= 8) {
+        const cx = t.r.reduce((s, q) => s + q[1], 0) / t.r.length;
+        const cy = t.r.reduce((s, q) => s + q[0], 0) / t.r.length;
+        const [lx, ly] = pt([cy, cx]);
+        out += `<text x="${nf(lx)}" y="${nf(ly)}" text-anchor="middle" fill="#9fc0d8" style="font-size:${fs(7)}px;font-weight:600">${esc(t.n)}</text>`;
+      }
     }
   }
 

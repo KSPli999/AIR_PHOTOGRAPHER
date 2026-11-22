@@ -14,6 +14,7 @@ const SRC = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
 const CN = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/CN.json'), 'utf8'));
 const RWY = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/RWY.json'), 'utf8'));
 const GROUND = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/GROUND.json'), 'utf8'));
+const TERM = fs.existsSync(path.join(ROOT, 'data/TERM.json')) ? JSON.parse(fs.readFileSync(path.join(ROOT, 'data/TERM.json'), 'utf8')) : { ap: {} };
 
 // ---------- 从源码里切函数 ----------
 function funcSrc(name) {
@@ -34,6 +35,7 @@ let zoom = 1;
 const proj = {};
 const RWY_DATA = ${JSON.stringify(RWY)};
 const GROUND_DATA = ${JSON.stringify(GROUND)};
+const TERM_DATA = ${JSON.stringify(TERM)};
 const nf = v => v.toFixed(zoom >= 300 ? 5 : zoom >= 50 ? 4 : zoom >= 10 ? 3 : zoom >= 2 ? 2 : 1);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 ${['pt', 'recipRwy', 'aipRunways', 'textW', 'runwaysOf', 'airportDiagram'].map(funcSrc).join('\n')}

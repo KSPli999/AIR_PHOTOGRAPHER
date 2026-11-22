@@ -62,3 +62,20 @@ APP 顶部下拉框可切换/导入数据集；也可以在页面里点「导入
 
 按 [抓取流程.md](抓取流程.md) 抓原始数据 → `node build/gen-national.js` → `node build/build.js`。
 只想临时看别的数据包，也可以用页面里的「导入」加载同格式 JSON。
+
+## 附加图层（`data/GROUND.json` / `data/TERM.json`）
+
+两者都由 OSM 生成（© OpenStreetMap contributors, ODbL），抽稀容差 3 m。
+
+`GROUND.json`：`{ src, ap: { [ICAO]: { rwy, twy, apn, bd } } }`
+
+| 字段 | 说明 |
+|---|---|
+| `rwy[]` | `{ p:[端点,端点], w:宽度m, rf:"13L/31R" }` 跑道线位（只存两端） |
+| `twy[]` | `{ p:[[lat,lon],...], w:宽度m, c:滑行道编号 }` 滑行道折线 |
+| `apn[]` | `{ r:[[lat,lon],...] }` 机坪多边形 |
+| `bd[]` | `{ r:[...] }` 机场边界（虚线） |
+
+`TERM.json`：`{ src, ap: { [ICAO]: [{ r:[[lat,lon],...], n:"T3" }] } }` 航站楼轮廓。
+
+绘制顺序：机场边界 → 机坪 → 滑行道 → 航站楼 → 跑道铺面/标记/标注 → 频率牌。
