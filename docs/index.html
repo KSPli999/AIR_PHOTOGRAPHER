@@ -344,22 +344,42 @@ function render(keepView){
   }
   // ---- 机场道面（GND 风格示意，放大后出现） ----
   if (diagOn) g += groundLayer(zc, vb);
-  // ---- 机场 ----
+  // ---- 机场（常显：点 + 中文名 ICAO 单行，密集区自动错位 + 引线） ----
   if (layerOn.apt) {
-    const aptLabels = [];
+    const boxes = [];
     D.airports.forEach((a, i) => {
       const [x, y] = pt(a.arp);
-      const big = a.comms.some(c => c.type === 'TWR');
-      g += `<circle class="aptdot" data-kind="apt" data-i="${i}" cx="${nf(x)}" cy="${nf(y)}" r="${(diagOn ? (big ? 1.2 : 0.9) : (big ? 3 : 2.2)) / Math.max(1, zc / 2)}"
+      const big = a.comms.some(c => c.type === "TWR");
+      const rPx = diagOn ? (big ? 3.6 : 2.8) : (big ? 3 : 2.2);
+      g += `<circle class="aptdot" data-kind="apt" data-i="${i}" cx="${nf(x)}" cy="${nf(y)}" r="${rPx / Math.max(1, zc / 2)}"
         fill="#ffd27f" fill-opacity=".95" stroke="#3a2a10" stroke-width="${(0.8 / zc).toFixed(3)}"/>`;
-      if (zc >= 1.7 && !diagOn) aptLabels.push({a, x, y, prio: a.iata ? 6 : 5});
+      const nm = (a.nameCn || a.id).split("/")[0];
+      const label = nm + " " + a.id;
+      const fs1 = zc < 1.7 ? 7.8 : 9.2;
+      const bw = (textW(label, fs1) + 3) / zc, bh = (fs1 + 3) / zc;
+      const cands = [];
+      for (const dy of [-7, 14, -19, 26, -31, 38, -45]) { cands.push([5, dy, "start"], [-5, dy, "end"]); }
+      cands.push([30, 2, "start"], [-30, 2, "end"], [50, 2, "start"], [-50, 2, "end"]);
+      let pick = null;
+      for (const [dx, dy, anc] of cands) {
+        const x0 = (dx >= 0 ? x + dx / zc : x + dx / zc - bw);
+        const y0 = y + (dy - fs1) / zc;
+        const r = [x0, y0, bw, bh];
+        const hit = boxes.some(q => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1]);
+        if (!pick) pick = { dx, dy, anc, r };
+        if (!hit) { pick = { dx, dy, anc, r }; break; }
+      }
+      boxes.push(pick.r);
+      const lx = x + pick.dx / zc, ly = y + pick.dy / zc;
+      if (Math.hypot(pick.dx, pick.dy) > 18) {
+        g += `<line x1="${nf(x)}" y1="${nf(y)}" x2="${nf(lx)}" y2="${nf(ly)}" stroke="#5f7285" stroke-width="${0.8 / zc}" stroke-opacity=".7"/>`;
+      }
+      g += `<text x="${nf(lx)}" y="${nf(ly)}" text-anchor="${pick.anc}" fill="#ffe6b8" style="font-size:${fs1 / zc}px;font-weight:700;paint-order:stroke;stroke:#081016;stroke-width:${2.2 / zc}px">${esc(label)}</text>`;
+      if (zc >= 2.6) {
+        const tw = (a.comms.find(c => c.type === "TWR") || {}).f || "";
+        if (tw) g += `<text x="${nf(lx)}" y="${nf(ly + 9 / zc)}" text-anchor="${pick.anc}" fill="#c8ad72" style="font-size:${7 / zc}px;font-weight:600;paint-order:stroke;stroke:#081016;stroke-width:${2 / zc}px">${esc(tw)}</text>`;
+      }
     });
-    // 机场标注按 IATA 优先，先放大的
-    aptLabels.sort((p, q) => q.prio - p.prio);
-    for (const it of aptLabels) {
-      const tw = (it.a.comms.find(c => c.type === 'TWR') || {}).f || '';
-      addLabel(it.x + 7 / zc, it.y + 4 / zc, it.a.nameCn || it.a.id, '#ffe6b8', 'apt', it.prio, 10, zc >= 2.3 ? tw : '', '#c8ad72', 'start');
-    }
   }
 
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
