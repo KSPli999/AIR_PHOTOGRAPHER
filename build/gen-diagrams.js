@@ -38,7 +38,7 @@ const GROUND_DATA = ${JSON.stringify(GROUND)};
 const TERM_DATA = ${JSON.stringify(TERM)};
 const nf = v => v.toFixed(zoom >= 300 ? 5 : zoom >= 50 ? 4 : zoom >= 10 ? 3 : zoom >= 2 ? 2 : 1);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-${['pt', 'recipRwy', 'aipRunways', 'textW', 'runwaysOf', 'termTag', 'airportDiagram'].map(funcSrc).join('\n')}
+${['pt', 'recipRwy', 'aipRunways', 'textW', 'runwaysOf', 'airportDiagram'].map(funcSrc).join('\n')}
 function angDiff(a, b){ let d = Math.abs(a-b) % Math.PI; return Math.min(d, Math.PI-d); }
 this.API = { pt, runwaysOf, airportDiagram, recipRwy, aipRunways, PROJ: proj, setZoom(z){ zoom = z; }, setView(tx,ty){ proj.tx = tx; proj.ty = ty; } };
 `;
