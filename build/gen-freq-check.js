@@ -36,9 +36,9 @@ const svgShim = {
 };
 // 模拟画布上的固定 UI 尺寸（CSS 像素，按 400×700 画布比例），用来验证标注不压面板
 const UI_RECTS = {
-  hud: { left: 10, top: 10, width: 335, height: 44 },
-  legend: { left: 10, top: 580, width: 252, height: 102 },
-  zoom: { left: 352, top: 566, width: 36, height: 118 }
+  hud: { left: 10, top: 10, width: 200, height: 30 },     // 4 个图层开关一行
+  legend: { left: 10, top: 570, width: 232, height: 108 }, // 4 行色标 + 1 行说明
+  zoom: { left: 354, top: 566, width: 36, height: 120 }    // 3 个按钮
 };
 const documentShim = {
   getElementById: id => {
