@@ -37,6 +37,8 @@
   .lbl.sm{font-size:9px;fill:#9fb6c9;font-weight:500}
   .freqlbl{font-size:10px;fill:#39d0ff;font-weight:700;pointer-events:none;
     paint-order:stroke;stroke:#04080c;stroke-width:2.8px}
+  .lblnote{font-size:8px;fill:#93a9bb;font-weight:500;pointer-events:none;
+    paint-order:stroke;stroke:#04080c;stroke-width:2px}
   .apt{font-size:11px;fill:#ffe0a3;font-weight:700;pointer-events:none;paint-order:stroke;
     stroke:#05090d;stroke-width:2.8px;stroke-linejoin:round}
   .aptdot{cursor:pointer}
@@ -134,7 +136,8 @@
       <div><i style="background:#39d0ff"></i>进近管制区</div>
       <div><i style="background:#fb7185"></i>塔台管制区</div>
       <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
-      <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大到机场显示跑道与频率</div>
+      <div style="margin-top:3px;color:#5d7386">放大后频率直接标在所属区块：区调按高度层自上而下叠列</div>
+      <div style="color:#5d7386">双指缩放 · 拖动平移 · 放大到机场显示跑道与频率</div>
     </div>
     <div id="aptBoard"></div>
     <div id="zoom">
@@ -243,6 +246,129 @@ function pf(packArr){
   return (packArr || []).map(x => x.f).filter(Boolean).join(' / ');
 }
 
+// ---------- 空域频率标注：文案 ----------
+// 单位简称：北京区域管制中心 / 首都进近 -> 北京 / 首都
+function callShort(c){
+  return String(c || '').replace(/(区域管制中心|区域管制室|进近管制室|进近管制|区域|进近|塔台|管制室|管制中心)$/g, '').trim();
+}
+// 垂直高度带压缩，用来区分同一块地方上下叠着的扇区
+// '12 500 m–7 800 m(exclusive)' -> '12 500–7 800 m'；'6 000 m–GND' -> '6 000 m–GND'
+function vband(v){
+  const s = vfmt(v || '').replace(/\(exclusive\)/gi, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const m = /(\d[\d ]*)?\s*m?\s*[–-]\s*(GND|SFC|\d[\d ]*)\s*m?/i.exec(s);
+  if (!m) return '';
+  const top = (m[1] || '').trim(), bot = m[2].trim();
+  if (!top) return '';                        // 'm–GND' 之类的残缺值不显示
+  if (/^(GND|SFC)$/i.test(bot)) return `${top} m–${bot.toUpperCase()}`;
+  return `${top}–${bot} m`;
+}
+// 拼接名称时去重（避免「拉萨 拉萨」这种重复）
+function nameJoin(){
+  const out = [];
+  for (const a of arguments) { const v = String(a == null ? '' : a).trim(); if (v && !out.includes(v)) out.push(v); }
+  return out.join(' ');
+}
+// 区调扇区短名：'Lhasa Control Area' 这类长名改用中文名
+function sectorShort(s){
+  const en = String(s.nameEn || '').trim();
+  if (!en || en.length > 9) return s.nameCn || en;
+  return en;
+}
+// 进近扇区的跑道构型：'AP01(ZBAA 01/36L/36R)' -> '01/36L/36R'
+function subCfg(a){
+  const m = /^[A-Z]{2}\d+\(([^)]*)\)(.*)$/.exec(a.nameCn || '');
+  if (!m) return '';
+  const s = (m[1].replace(/^[A-Z]{4}\s*/, '').trim() + m[2].trim()).trim();
+  return s && s.length <= 14 ? s : '';
+}
+// 几何指纹：同一块多边形会被上下叠层的多个扇区复用
+function geomKey(o){
+  return (o.pts || []).map(p => p[0].toFixed(4) + ' ' + p[1].toFixed(4)).join(';');
+}
+// 垂直范围上界（米），用于叠层标注自上而下排序
+function vtop(v){
+  const m = /(\d[\d ]*)/.exec(String(v || ''));
+  return m ? +m[1].replace(/\s/g, '') : 0;
+}
+// 标注版式：从信息最全到最精简（去高度带 → 去标题 → 只留频率）
+function mkLabelVariants(header, members){
+  const out = [], seen = new Set();
+  const add = (hd, mems) => {
+    const list = (mems || []).filter(m => m && (m.name || m.main));
+    if (!list.length) return;
+    const k = hd + '|' + list.map(m => (m.name || '') + ',' + (m.main || '') + ',' + (m.note || '')).join(';');
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({header: hd, members: list});
+  };
+  add(header, members);
+  add(header, (members || []).map(m => ({name: m.name, main: m.main, note: ''})));
+  add('', (members || []).map(m => ({name: m.name, main: m.main, note: ''})));
+  add('', (members || []).map(m => ({name: '', main: m.main, note: ''})));
+  return out;
+}
+// 主用 / 备用分列：地图上只标主用（多个主用并列），备用留给详情面板
+function freqParts(x){
+  const prim = [], alt = [];
+  (x.freqs || []).forEach(f => { if (f && f.f) (f.rank === 'ALTERNATE' ? alt : prim).push(f.f); });
+  return {prim, alt};
+}
+// AD 2.17 ATS 空域分类：只有真正的塔台管制区/管制地带才有塔台频率
+function ctrKind(c){
+  const n = ((c.nameEn || '') + ' ' + (c.nameCn || '')).toLowerCase();
+  if (/twr|tower|control zone/.test(n)) return 'twr';
+  if (/prohibit/.test(n)) return 'p';
+  if (/fuel dump|dumping/.test(n)) return 'fuel';
+  if (/restricted/.test(n)) return 'r';
+  if (/altimeter/.test(n)) return 'alt';
+  if (/terminal/.test(n)) return 'tma';
+  return 'other';
+}
+// 点到线段的距离（世界坐标），用于求多边形内“离边界最远”的标注位
+function segDist(px, py, ax, ay, bx, by){
+  const dx = bx - ax, dy = by - ay;
+  const L = dx * dx + dy * dy;
+  let t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = ax + t * dx, qy = ay + t * dy;
+  return Math.hypot(px - qx, py - qy);
+}
+// 多边形内部的候选锚点：按「离边界远 + 靠形心」排序
+// 同一块多边形被多个叠层扇区共用时，第二个标注会自动换到次优位置，不会直接消失
+// 缓存用 WeakMap，避免把内部数据写进数据对象（导出 / 打包时会一起序列化）
+const ANCH_CACHE = new WeakMap();
+function anchorsInPoly(o){
+  const key = proj.lat0 + ',' + proj.lon0 + ',' + proj.scale.toFixed(4) + ',' + proj.w + ',' + proj.h;
+  const hit = ANCH_CACHE.get(o);
+  if (hit && hit.key === key) return hit.list;
+  const pts = (o.pts || []);
+  if (pts.length < 3) { ANCH_CACHE.set(o, {key, list: []}); return []; }
+  const W = pts.map(p => pt(p));
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const [x, y] of W) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (!(x1 - x0 > 0) || !(y1 - y0 > 0)) { ANCH_CACHE.set(o, {key, list: []}); return []; }
+  const [cx, cy] = pt(centroid(pts));
+  const out = [];
+  const N = 7;
+  for (let iy = 0; iy < N; iy++) for (let ix = 0; ix < N; ix++) {
+    const x = x0 + (x1 - x0) * (ix + .5) / N, y = y0 + (y1 - y0) * (iy + .5) / N;
+    const lon = proj.lon0 + (x - proj.ox) / (proj.cos * proj.scale);
+    const lat = proj.lat0 - (y - proj.oy) / proj.scale;
+    if (!inPoly([lat, lon], pts)) continue;
+    let d = 1e18;
+    for (let i = 0; i < W.length; i++) {
+      const a = W[i], b = W[(i + 1) % W.length];
+      d = Math.min(d, segDist(x, y, a[0], a[1], b[0], b[1]));
+    }
+    out.push({x, y, s: d - .3 * Math.hypot(x - cx, y - cy)});
+  }
+  out.sort((a, b) => b.s - a.s);
+  const list = out.slice(0, 20);
+  ANCH_CACHE.set(o, {key, list});
+  return list;
+}
+
 // ---------- state ----------
 const layerOn = {acc: true, tma: true, twr: true, apt: true};
 let zoom = 1, focus = null, lastRenderZoom = 1;
@@ -279,14 +405,27 @@ function render(keepView){
   const diagOn = proj.scale * zc / 111320 >= DIAG_PPM;
 
   const labels = [];
-  const addLabel = (x, y, text, fill, cls, prio, fs, sub, subFill, anchor) => {
-    if (!text || x < vb.x0 || x > vb.x1 || y < vb.y0 || y > vb.y1) return;
-    labels.push({x, y, text, fill, cls: cls || 'lbl', prio, fs: fs || 10.5, sub: sub || '', subFill: subFill || '#b9a8f5', anchor: anchor || 'middle'});
-  };
-  const bboxPx = (pts) => {
+  const aptBoxes = [];        // 机场标注占位，空域频率标注要避开它们
+  // 世界坐标包围盒 + 是否与视窗相交（视窗外的空域不生成标注）
+  const objBox = (o) => {
+    const pts = (o.pts || []);
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (const p of pts) { const [x, y] = pt(p); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    return [x1 - x0, y1 - y0];
+    return [x0, y0, x1, y1];
+  };
+  const visible = (b) => b[2] > vb.x0 && b[0] < vb.x1 && b[3] > vb.y0 && b[1] < vb.y1;
+  const bboxPx = (b) => [b[2] - b[0], b[3] - b[1]];
+  // 空域标注块：一行单位标题 + 若干「扇区名 / 主用频率 / 高度带」成员；按优先级参与避让
+  const pushAir = (o, cfg) => {
+    const members = (cfg.members || []).filter(m => m && (m.name || m.main));
+    if (!members.length) return;
+    const anchors = anchorsInPoly(o).filter(a => a.x > vb.x0 && a.x < vb.x1 && a.y > vb.y0 && a.y < vb.y1);
+    if (!anchors.length) return;
+    labels.push({
+      anchors, variants: mkLabelVariants(cfg.header || '', members),
+      prio: cfg.prio, fs: cfg.fs || 9, area: cfg.area || 0, kind: cfg.kind || '',
+      nameFill: cfg.nameFill || '#cfe6f5', freqFill: cfg.freqFill || '#39d0ff', noteFill: cfg.noteFill || '#93a9bb'
+    });
   };
 
   let g = grid(proj, zc, vb);
@@ -303,56 +442,189 @@ function render(keepView){
   });
   // ---- 区调扇区 ----
   if (layerOn.acc && !diagOn) {
+    // 同一块多边形上下叠着多个高度层的扇区：合并成一个「叠层」标注，自上而下排列
+    const groups = new Map();
+    D.sectors.forEach(s => { const k = geomKey(s); const a = groups.get(k); if (a) a.push(s); else groups.set(k, [s]); });
+    const used = new Set();
     D.sectors.forEach((s, i) => {
       g += `<path class="poly" data-kind="sec" data-i="${i}" d="${pathAll(s)}"
         fill="#a78bfa" fill-opacity="${diagOn ? 0 : .07}" stroke="#6d5fae" stroke-width="${(0.8 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-opacity=".8"/>`;
-      if (zc >= 1.9 && !diagOn) {
-        const [bw, bh] = bboxPx(s.pts);
-        const [lx, ly] = pt(centroid(s.pts));
-        if (bw > 34 && bh > 20) {
-          addLabel(lx, ly, s.nameEn, '#a9c1d4', 'lbl sm', 3, 9, (s.freqs[0] || {}).f || '', '#c3b3fa');
-        }
+      if (zc < 1.8) return;
+      const sb = objBox(s);
+      if (!visible(sb)) return;
+      const [bw, bh] = bboxPx(sb);
+      if (bw * zc < 54 || bh * zc < 26) return;
+      const k = geomKey(s);
+      const grp = groups.get(k);
+      if (grp.length > 1) {
+        if (used.has(k)) return;
+        used.add(k);
+        const members = grp.slice().sort((a, b) => vtop(b.vertical) - vtop(a.vertical)).map(x => {
+          const {prim} = freqParts(x);
+          return {
+            name: sectorShort(x), main: prim.join(' / '),
+            note: zc >= 2.2 ? vband(x.vertical) : ''
+          };
+        }).filter(m => m.main);
+        if (!members.length) return;
+        pushAir(s, {
+          header: callShort(s.call) + '区调', members, prio: 3, fs: 8.6, area: bw * bh, kind: 'sec',
+          nameFill: '#c9d3e0', freqFill: '#c3b3fa'
+        });
+        return;
       }
+      const {prim} = freqParts(s);
+      const name = nameJoin(callShort(s.call), sectorShort(s));
+      pushAir(s, {
+        members: [{name, main: prim.join(' / '), note: zc >= 2.2 ? vband(s.vertical) : ''}],
+        prio: 3, fs: 8.6, area: bw * bh, kind: 'sec', nameFill: '#c9d3e0', freqFill: '#c3b3fa'
+      });
     });
   }
   // ---- 进近区 ----
   if (layerOn.tma && !diagOn) {
+    const hasSub = new Set(D.areas.filter(a => a.sub).map(a => a.icao));
+    // 同一频率、几何基本重合的进近扇区（跑道构型变体）只标一次
+    const skipArea = new Set();
+    const buckets = new Map();
+    D.areas.forEach(a => {
+      const prim = freqParts(a).prim.join('/');
+      if (!prim) return;
+      const k = (a.call || '') + '|' + (a.nameEn || '') + '|' + prim;
+      const arr = buckets.get(k);
+      if (arr) arr.push(a); else buckets.set(k, [a]);
+    });
+    const latBox = pts => {
+      let a0 = 90, a1 = -90, b0 = 180, b1 = -180;
+      for (const p of pts) { if (p[0] < a0) a0 = p[0]; if (p[0] > a1) a1 = p[0]; if (p[1] < b0) b0 = p[1]; if (p[1] > b1) b1 = p[1]; }
+      return [a0, b0, a1, b1];
+    };
+    buckets.forEach(arr => {
+      if (arr.length < 2) return;
+      const bx = arr.map(a => latBox(a.pts));
+      const ar = b => Math.max(1e-9, (b[2] - b[0]) * (b[3] - b[1]));
+      const keep = arr.map(() => true);
+      for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) {
+        if (!keep[i] || !keep[j]) continue;
+        const A = bx[i], B = bx[j];
+        const iw = Math.min(A[2], B[2]) - Math.max(A[0], B[0]);
+        const ih = Math.min(A[3], B[3]) - Math.max(A[1], B[1]);
+        if (iw <= 0 || ih <= 0) continue;
+        if (iw * ih / Math.min(ar(A), ar(B)) < .55) continue;
+        if (ar(A) >= ar(B)) keep[j] = false; else keep[i] = false;
+      }
+      arr.forEach((a, i) => { if (!keep[i]) skipArea.add(a); });
+    });
+    // 同几何的进近父区 / APxx 扇区 / 叠层，合并成一个标注块
+    const groups = new Map();
+    D.areas.forEach(a => { const k = geomKey(a); const arr = groups.get(k); if (arr) arr.push(a); else groups.set(k, [a]); });
+    const used = new Set();
+    const memberName = x => {
+      let n = x.sub ? x.nameEn : (x.nameCn || x.nameEn);
+      if (x.sub && zc >= 12) {
+        const cfg = subCfg(x);
+        if (cfg && !/\(/.test(x.nameEn || '')) n += '(' + cfg + ')';
+      }
+      return n;
+    };
     D.areas.forEach((a, i) => {
       const sub = a.sub;
       g += `<path class="poly" data-kind="ap" data-i="${i}" d="${pathAll(a)}"
         fill="#39d0ff" fill-opacity="${diagOn ? 0 : (sub ? .05 : .08)}" stroke="#39d0ff" stroke-width="${(sub ? 0.8 : 1.4) / Math.max(1, zc / 1.6)}"
         stroke-opacity="${sub ? .45 : .8}" stroke-dasharray="${((sub ? 3 : 7) / zc).toFixed(3)} ${((sub ? 5 : 4) / zc).toFixed(3)}"/>`;
-      if (zc >= (sub ? 2.4 : 1.6) && !diagOn) {
-        const [bw, bh] = bboxPx(a.pts);
-        const [lx, ly] = pt(centroid(a.pts));
-        if (bw > 34 && bh > 20) {
-          const f = pf(a.freqs);
-          addLabel(lx, ly, a.nameCn, '#9fe6ff', 'lbl sm', sub ? 2 : 4, 9.5, f ? f.split(' / ')[0] : '', '#7fe3ff');
+      if (skipArea.has(a)) return;
+      const {prim} = freqParts(a);
+      const k = geomKey(a);
+      const grp = groups.get(k);
+      if (grp.length > 1 && !used.has(k)) {
+        used.add(k);
+        const withFreq = grp.filter(x => freqParts(x).prim.length);
+        const rep = withFreq[0] || a;
+        const ab = objBox(rep);
+        if (!visible(ab)) return;
+        const [bw, bh] = bboxPx(ab);
+        if (zc < 2.0 || bw * zc < 58 || bh * zc < 28) return;
+        if (!withFreq.length) {
+          // 整组都没频率：有扇区时不标名称
+          if (hasSub.has(rep.icao)) return;
+          if (bw * zc < 96 || bh * zc < 42) return;
+          pushAir(rep, {
+            members: [{name: rep.nameCn || rep.nameEn, main: '', note: ''}],
+            prio: 4, fs: 9, area: bw * bh, kind: 'area', nameFill: '#9fe6ff'
+          });
+          return;
         }
+        const members = withFreq.slice().sort((x, y) => vtop(y.vertical) - vtop(x.vertical)).map(x => ({
+          name: memberName(x), main: freqParts(x).prim.join(' / '), note: zc >= 2.1 ? vband(x.vertical) : ''
+        }));
+        pushAir(rep, {
+          header: callShort(rep.call) + '进近', members, prio: 4, fs: 8.7, area: bw * bh, kind: 'area',
+          nameFill: '#9fe6ff', freqFill: '#7fe3ff'
+        });
+        return;
       }
+      if (grp.length > 1) return;   // 组内非代表
+      if (!prim.length && zc < 2.2) return;
+      const ab = objBox(a);
+      if (!visible(ab)) return;
+      const [bw, bh] = bboxPx(ab);
+      if (!prim.length) {
+        // 未单列频率的父区：有 APxx 扇区时只画边界不标名称，避免和扇区标题重复
+        if (hasSub.has(a.icao)) return;
+        if (bw * zc < 96 || bh * zc < 42) return;
+        pushAir(a, {members: [{name: a.nameCn || a.nameEn, main: '', note: ''}], prio: 4, fs: 9, area: bw * bh, kind: 'area', nameFill: '#9fe6ff'});
+        return;
+      }
+      if (zc < (sub ? 2.0 : 1.5) || bw * zc < 58 || bh * zc < 28) return;
+      const nm1 = sub ? nameJoin(callShort(a.call), memberName(a)) : memberName(a);
+      pushAir(a, {
+        members: [{name: nm1, main: prim.join(' / '), note: zc >= 2.1 ? vband(a.vertical) : ''}],
+        prio: sub ? 4 : 5, fs: sub ? 8.6 : 9.4, area: bw * bh, kind: 'area',
+        nameFill: '#9fe6ff', freqFill: '#7fe3ff'
+      });
     });
   }
-  // ---- 塔台管制区 ----
+  // ---- 塔台管制区 / 特殊空域 ----
   if (layerOn.twr && !diagOn) {
+    const SPECIAL = {p: '禁飞区', fuel: '放油区', r: '限制区', alt: '高度表转换区', tma: '终端区', other: '特殊空域'};
     D.ctr.forEach((c, i) => {
       g += `<path class="poly" data-kind="twr" data-i="${i}" d="${pathAll(c)}" fill="#fb7185" fill-opacity="${diagOn ? 0 : .10}"
         stroke="#fb7185" stroke-width="${(1 / zc).toFixed(3)}" stroke-opacity=".7"/>`;
-      if (zc >= 2.6 && !diagOn) {
-        const [bw, bh] = bboxPx(c.pts);
-        if (bw > 20 && bh > 16) {
-          const [lx, ly] = pt(centroid(c.pts));
-          const ap = D.airports.find(x => x.id === c.icao);
-          const tw = ap ? (ap.comms.find(x => x.type === 'TWR') || {}).f || '' : '';
-          addLabel(lx, ly, '塔台区', '#ffb3c0', 'lbl sm', 1, 9, tw, '#ff8fa3');
-        }
+      const ap = D.airports.find(x => x.id === c.icao);
+      const kind = ctrKind(c);
+      let cfg;
+      if (kind === 'twr') {
+        if (zc < 2.2) return;
+        const set = new Set();
+        (ap && ap.twr ? ap.twr : []).forEach(t => t.f && set.add(t.f));
+        if (!set.size && ap) (ap.comms || []).filter(x => x.type === 'TWR').forEach(x => x.f && set.add(x.f));
+        cfg = {
+          members: [{name: (ap ? ap.nameCn : c.icao) + '塔台', main: [...set].slice(0, 3).join(' / '), note: ''}],
+          prio: 6, fs: 9, kind: 'twr', nameFill: '#ffc0cb', freqFill: '#ff8fa3'
+        };
+      } else {
+        // 放油区 / 禁区 / 限制区不是通信区，不挂频率，只做高倍率提示；
+        // 高度表转换区数量多又不是无线电，直接不标
+        if (kind === 'alt') return;
+        if (zc < 3.4) return;
+        cfg = {
+          members: [{name: (ap ? ap.nameCn : c.icao) + ' ' + (SPECIAL[kind] || '特殊空域'), main: '', note: ''}],
+          prio: 1, fs: 8.2, kind: 'special', nameFill: '#e3a0ab'
+        };
       }
+      const cb = objBox(c);
+      if (!visible(cb)) return;
+      const [bw, bh] = bboxPx(cb);
+      if (bw * zc < 52 || bh * zc < 26) return;
+      cfg.area = bw * bh;
+      pushAir(c, cfg);
     });
   }
   // ---- 机场道面（GND 风格示意，放大后出现） ----
   g += groundLayer(zc, vb);
   // ---- 机场（常显：点 + 中文名 ICAO 单行，密集区自动错位 + 引线） ----
   if (layerOn.apt) {
-    const boxes = [];
+    const boxes = aptBoxes;
     D.airports.forEach((a, i) => {
       const [x, y] = pt(a.arp);
       const big = a.comms.some(c => c.type === "TWR");
@@ -399,32 +671,83 @@ function render(keepView){
   }
 
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  svg.innerHTML = `<g id="world">${g}${placeLabels(labels)}</g>`;
+  svg.innerHTML = `<g id="world">${g}${placeLabels(labels, aptBoxes)}</g>`;
   applyView();
   bindPicks();
 }
 
-// 标注避让：按优先级贪心放置，重叠就丢弃
-function placeLabels(items){
-  items.sort((a, b) => b.prio - a.prio);
-  const placed = [];
-  let out = '';
+// 标注避让：按优先级贪心放置。每个空域标注带一组多边形内部候选锚点，
+// 一条标签与已放置内容冲突时换锚点、缩成「只留频率」，都不行才丢弃。
+function placeLabels(items, seed){
+  items.sort((a, b) => (b.prio - a.prio) || ((b.area || 0) - (a.area || 0)));
+  const placed = (seed || []).map(r => r.slice());
   const fsr = Math.max(1, zoom);
-  // 描边宽度按屏幕像素给，必须除掉缩放，否则放大后被 scale() 拉成黑气泡
-  const swOf = cls => ((cls === 'freqlbl' || cls === 'apt') ? 2.8 : 2.6) / fsr;
+  const vw = viewBounds();
+  let out = '';
+  let dropped = 0, drawn = 0;
+  const byKind = {}, lost = [];
+  // 候选微调（屏幕像素）：正中 → 上下挪一行 → 左右挪半截
+  const NUDGE = [[0, 0], [0, 11], [0, -11], [-9, 0], [9, 0], [0, 20]];
+  const collides = r => placed.some(p => r[0] < p[0] + p[2] && r[0] + r[2] > p[0] && r[1] < p[1] + p[3] && r[1] + r[3] > p[1]);
   for (const it of items) {
-    const fsW = it.fs / fsr;                       // 世界坐标下的字号（屏幕上恒为 it.fs px）
-    const swW = swOf(it.cls).toFixed(2);
-    const wtxt = it.text + (it.sub ? ' ' + it.sub : '');
-    const w = Math.max(12 / fsr, wtxt.length * fsW * (/[\u4e00-\u9fa5]/.test(wtxt) ? 1.0 : 0.62));
-    const h = fsW * (it.sub ? 2.3 : 1.25);
-    const x0 = it.anchor === 'start' ? it.x : it.x - w / 2;
-    const r = [x0, it.y - fsW * 0.95, w, h];
-    if (placed.some(p => r[0] < p[0] + p[2] && r[0] + r[2] > p[0] && r[1] < p[1] + p[3] && r[1] + r[3] > p[1])) continue;
-    placed.push(r);
-    out += `<text class="${it.cls}" x="${it.x.toFixed(2)}" y="${it.y.toFixed(2)}" text-anchor="${it.anchor}" fill="${it.fill}" style="font-size:${fsW.toFixed(2)}px;stroke-width:${swW}px">${esc(it.text)}</text>`;
-    if (it.sub) out += `<text class="freqlbl" x="${it.x.toFixed(2)}" y="${(it.y + fsW * 1.3).toFixed(2)}" text-anchor="${it.anchor}" fill="${it.subFill}" style="font-size:${fsW.toFixed(2)}px;stroke-width:${swOf('freqlbl').toFixed(2)}px">${esc(it.sub)}</text>`;
+    // 每行：文字、字号(屏幕px)、样式类、填充、相对首行基线的偏移(屏幕px)
+    const build = v => {
+      const lines = [];
+      let dy = 0, w = 0;
+      const put = (text, size, cls, fill) => {
+        if (!text) return;
+        lines.push({text, size, cls, fill, dy});
+        w = Math.max(w, textW(text, size));
+        dy += size * 1.16;
+      };
+      if (v.header) put(v.header, it.fs * 1.02, 'lbl', it.nameFill);
+      (v.members || []).forEach((m, i) => {
+        if (i) dy += it.fs * 0.2;
+        put(m.name, it.fs, 'lbl sm', it.nameFill);
+        put(m.main, it.fs * 1.16, 'freqlbl', it.freqFill);
+        put(m.note, it.fs * 0.86, 'lblnote', it.noteFill);
+      });
+      return {lines, w, h: dy};
+    };
+    let done = null;
+    for (const v of it.variants) {
+      const b = build(v);
+      if (!b.lines.length) continue;
+      for (const a of it.anchors) {
+        for (const [nx, ny] of NUDGE) {
+          // 贴边的标注整体向视窗内收，避免被裁掉半个字
+          let x = a.x + nx / fsr, y = a.y + ny / fsr;
+          const hw = (b.w / 2 + 2) / fsr, hh = (b.h + 2) / fsr;
+          x = Math.min(Math.max(x, vw.x0 + hw), vw.x1 - hw);
+          y = Math.min(Math.max(y, vw.y0 + it.fs / fsr), vw.y1 - hh);
+          const rect = [x - b.w / 2 / fsr - 1.2 / fsr, y - it.fs * .95 / fsr, (b.w + 2.4) / fsr, (b.h + 1.6) / fsr];
+          if (collides(rect)) continue;
+          placed.push(rect);
+          done = {b, x, y};
+          break;
+        }
+        if (done) break;
+      }
+      if (done) break;
+    }
+    if (!done) {
+      dropped++;
+      const k = it.kind || 'other';
+      (byKind[k] = byKind[k] || {drawn: 0, dropped: 0}).dropped++;
+      if (lost.length < 40) {
+        const v0 = it.variants[0] || {}, m0 = (v0.members || [])[0] || {};
+        lost.push((v0.header ? v0.header + ' ' : '') + (m0.name || m0.main || ''));
+      }
+      continue;
+    }
+    drawn++;
+    (byKind[it.kind || 'other'] = byKind[it.kind || 'other'] || {drawn: 0, dropped: 0}).drawn++;
+    for (const ln of done.b.lines) {
+      const sw = (ln.cls === 'freqlbl' ? 2.8 : ln.cls === 'lblnote' ? 2 : 2.4) / fsr;
+      out += `<text class="${ln.cls}" x="${done.x.toFixed(2)}" y="${(done.y + ln.dy / fsr).toFixed(2)}" text-anchor="middle" fill="${ln.fill}" style="font-size:${(ln.size / fsr).toFixed(2)}px;stroke-width:${sw.toFixed(2)}px">${esc(ln.text)}</text>`;
+    }
   }
+  if (typeof window !== 'undefined') window.__labelStats = {drawn, dropped, total: items.length, byKind, lost};
   return out;
 }
 

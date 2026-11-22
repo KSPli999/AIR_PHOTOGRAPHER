@@ -1,6 +1,6 @@
 # 天际电波 SKYWAVE · 工程交接书
 
-> 写于 2026-11-22，对应 APK `2026.12.25`（versionCode 23），git `38c09d8`。
+> 写于 2026-11-22，对应 APK `2026.12.25.2`（versionCode 24），git `本次改动`。
 > 目的：让一个**没有上下文的新对话**读完这一份就能接着干。
 
 ---
@@ -62,8 +62,9 @@ work/airspace/
 │   ├── RWY.json             12 KB  68 个机场的跑道端头坐标（道面校准用）
 │   └── border.json          80 KB  国界底图
 ├── build/                  生成与预览脚本（见 §6）
+│   └── gen-freq-check.js   频率标注自检：真实投影出快照 SVG + 重叠/丢弃统计
 ├── apk/                    Android 工程 + build.sh + keystore + 产物
-│   ├── AndroidManifest.xml versionCode 23 / versionName 2026.12.25
+│   ├── AndroidManifest.xml versionCode 24 / versionName 2026.12.25.2
 │   ├── src/app/dsh/airspace/MainActivity.java  WebView 壳（assets/index.html）
 │   ├── assets/index.html   构建时覆盖
 │   └── 空域频率图.apk      740 KB
@@ -155,6 +156,8 @@ zc = zoom                       // 用户缩放
 | 常量 | 值 | 含义 |
 |---|---|---|
 | `DIAG_PPM` | `0.03` | 1px ≤ 33 m 时才画「完整机场图」+ 频率牌；否则只画空域/机场点 |
+| 频率标注门限 | 区调 zc≥1.8 / 进近扇区 zc≥2.0 / 父区 zc≥2.2 / 塔台区 zc≥2.2 | 还要屏幕包围盒够大（区调 ≥54×26px、进近 ≥58×28px） |
+| 叠层标注 | 几何完全相同的扇区/进近区合并成一块 | 标题 + 每个高度层一行，按高度自上而下 |
 | `MIN_MPP` | `2.2` | 最大倍率上限（2.2 m/px），`zoomCap()` 由此算 |
 | `ZMIN / ZMAX` | `0.7 / 12000` | 缩放原始区间，实际受 `zoomCap()` 收敛 |
 | 机场图触发 | 跑道 bbox 屏幕跨度 ≥ **110px** | `groundLayer()` 里的门限，防止全国视角出现灰碎块 |
@@ -168,8 +171,15 @@ zc = zoom                       // 用户缩放
 | `airportDiagram(a,g,zc,k,vb,lite)` | 画单场完整图：机坪/滑行道/跑道铺面/边线/中线/入口条纹/瞄准点/TDZ/跑道号/ILS 标注/塔台频率 |
 | `runwayLines()` | 旧的低倍率「跑道线」实现，**已不用**，保留未删 |
 | `updateBoard(a)` | 右上角固定频率牌 `#aptBoard`，仅 `diagOn` 时按视口中心最近的机场显示 |
+| `showArea/showSector/showTower` | 详情面板：主/备用频率、高度带、开放条件 |
 | `jumpToAirport(id)` / `fitAirportZoom(a)` | 跳转到机场并算合适倍率（含深链 `#apt=ZBAA`） |
-| `placeLabels(items)` | 机场标注避让：12 个候选偏移 + 引线，被挤开 >18px 才画引线 |
+| `placeLabels(items, seed)` | 空域标注避让：每个标注带 ≤20 个多边形内部候选锚点 + 6 种微调，按优先级贪心放置；挤不下时先省高度带、再省名称，最后只留频率 |
+| `anchorsInPoly(o)` | 多边形内部候选锚点（离边界远 + 靠形心排序），WeakMap 缓存，换投影自动失效 |
+| `callShort / sectorShort / subCfg` | 单位简称、区调扇区短名、进近扇区跑道构型后缀 |
+| `vband / vtop` | 高度带压缩显示（`12 500 m–7 800 m(exclusive)` → `12 500–7 800 m`）、高度上界排序 |
+| `geomKey / mkLabelVariants` | 同几何分组（叠层）、标注版式降级序列 |
+| `ctrKind` | AD 2.17 空域分类：只有塔台管制区/管制地带挂塔台频率，放油区/禁区/限制区不挂 |
+| `placeLabels` 后面 `window.__labelStats` | 自检用：画出/丢弃数量、分层统计、丢弃名单 |
 | `showAirport/showArea/showSector/showTower` | 点选后的详情面板 |
 | `buildTable()` | 底部频率总表 |
 | `loadPacks/usePack` | `localStorage` 里可挂额外数据包（`skywave.packs.v2`） |
@@ -244,9 +254,12 @@ cp 空域频率图.apk /sdcard/Download/天际电波.apk
 2. **ZGSD 珠海完全不在 eAIP 包里**，无法补。
 3. **OSM 取不到首都 T3 / 虹桥 T2** 等巨型 multipolygon 航站楼（bbox 5 万节点上限）。要补得改成 `/api/0.6/relation/{id}/full` 逐个取，现有 `build/fix-one-term.js` 是雏形。
 4. 道面几何是 OSM 的，个别机场机坪/滑行道有缺块或旧数据。
-5. 京津冀 / 长三角 / 珠三角 机场密集区，82 个标注仍有 8–30 处轻微重叠（`placeLabels` 尽力了）。
-6. 中途 OSM 429 限流曾导致 15 个机场保留旧缓存；ZGDY、ZJQH 曾丢航站楼，用 `build/gen-term-fallback.js` 补回。
-7. 高倍率下没有卫星底图 —— 是刻意去掉的（离线 + 体积）。
+5. 京津冀 / 长三角 / 珠三角 机场密集区，82 个机场标注仍有 8–30 处轻微重叠（`placeLabels` 尽力了）。
+6. 区域视角（z≈2–4）一次性放不下所有区调标签：华北/华东会丢弃 10–20% 的低优先级标注，
+   终端区视角（z≥20）基本能全标，个别小扇区（如广州 AP02/AP08 的跑道构型变体）会被挤掉；
+   丢注释义见 `build/gen-freq-check.js` 的统计。
+7. 中途 OSM 429 限流曾导致 15 个机场保留旧缓存；ZGDY、ZJQH 曾丢航站楼，用 `build/gen-term-fallback.js` 补回。
+8. 高倍率下没有卫星底图 —— 是刻意去掉的（离线 + 体积）。
 
 ---
 
@@ -254,7 +267,7 @@ cp 空域频率图.apk /sdcard/Download/天际电波.apk
 
 1. **全国视角机场点改成按跑道真向的小箭头/短线（8px）** —— 既干净又能一眼看出跑道朝向（已向用户提过，未采纳/未做）
 2. 补首都 T3、虹桥 T2 等缺失航站楼（relation/full 接口）
-3. 密集区标注重叠优化（按重要度分级：枢纽常显、支线降到更高倍率才显示）
+3. 区域视角被挤掉的扇区标注：可试“引线外挂”或按重要度预算控制数量
 4. 机场详情面板加跑道剖面小图（当前只有文字）
 5. 支持 eAIP 换周期时 diff 出「频率变更」清单
 
@@ -263,6 +276,7 @@ cp 空域频率图.apk /sdcard/Download/天际电波.apk
 ## 10. 提交历史（近期，从旧到新）
 
 ```
+38c09d8 之后的本次改动：频率标注细化：主用频率 + 高度带、叠层扇区合并、塔台区按 AIP 分类、标注避让与自检
 63fdc09 边界/点位描边与虚线按屏幕像素缩放，道面视角更快到位
 8792085 用离线矢量机场道面图替代卫星底图
 dbfdb97 机场图简化为跑道 + 对应频率

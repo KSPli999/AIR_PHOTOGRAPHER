@@ -7,3 +7,5 @@ dist/
 _c.js
 apk/*.apk
 apk/*.idsig
+.bak/
+build/.freq-check/
