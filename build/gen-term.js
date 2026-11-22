@@ -44,10 +44,29 @@ function simplify(pts, eps = 0.000027) {
   return out;
 }
 
+function stitch(parts) {
+  const ring = parts.shift().slice();
+  while (parts.length) {
+    const last = ring[ring.length - 1];
+    let best = -1, rev = false, bestD = Infinity;
+    for (let i = 0; i < parts.length; i++) {
+      const w = parts[i];
+      const d0 = Math.hypot(w[0][0] - last[0], w[0][1] - last[1]);
+      const d1 = Math.hypot(w[w.length - 1][0] - last[0], w[w.length - 1][1] - last[1]);
+      if (d0 < bestD) { bestD = d0; best = i; rev = false; }
+      if (d1 < bestD) { bestD = d1; best = i; rev = true; }
+    }
+    if (best < 0 || bestD > 0.002) break;
+    const w = parts.splice(best, 1)[0];
+    ring.push(...(rev ? w.slice().reverse() : w).slice(1));
+  }
+  return ring;
+}
+
 function parse(xml) {
   const nodes = new Map();
   for (const m of xml.matchAll(/<node[^>]*\bid="(\d+)"[^>]*\blat="([-\d.]+)"[^>]*\blon="([-\d.]+)"/g)) nodes.set(m[1], [+m[2], +m[3]]);
-  const strong = [], weak = [];
+  const strong = [], weak = [], wayPts = new Map();
   for (const m of xml.matchAll(/<way\b[^>]*>([\s\S]*?)<\/way>/g)) {
     const body = m[1];
     const tags = {};
@@ -63,6 +82,8 @@ function parse(xml) {
       const p = nodes.get(nd[1]);
       if (p) ring.push([+p[0].toFixed(6), +p[1].toFixed(6)]);
     }
+    const widM = /<way\b[^>]*\bid="(\d+)"/.exec(m[0]);
+    if (widM) wayPts.set(widM[1], ring);
     if (ring.length < 4) continue;
     const s = simplify(ring);
     if (s.length < 4) continue;
@@ -78,6 +99,22 @@ function parse(xml) {
       area = Math.abs(area / 2) * 111320 * 111320 * Math.cos(s[0][0] * Math.PI / 180);
       if (area > 2000) weak.push(rec);
     }
+  }
+  // 航站楼 relation（大机场常见，如首都 T3）
+  for (const m of xml.matchAll(/<relation\b[^>]*>([\s\S]*?)<\/relation>/g)) {
+    const body = m[1];
+    const tags = {};
+    for (const t of body.matchAll(/<tag k="([^"]*)" v="([^"]*)"/g)) tags[t[1]] = t[2];
+    if (!/terminal/i.test((tags.aeroway || "") + (tags.building || ""))) continue;
+    const parts = [];
+    for (const mm of body.matchAll(/<member type="way" ref="(\d+)" role="(outer|)"/g)) {
+      const pts = wayPts.get(mm[1]);
+      if (pts && pts.length > 1) parts.push(pts.slice());
+    }
+    if (!parts.length) continue;
+    const ring = stitch(parts);
+    if (ring.length < 4) continue;
+    strong.push({ r: simplify(ring), n: tags.name || tags["name:zh"] || "" });
   }
   if (strong.length) return strong;
   return weak.slice(0, 6);

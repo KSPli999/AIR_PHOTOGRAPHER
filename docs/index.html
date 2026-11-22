@@ -496,6 +496,20 @@ function textW(s, fs){
   for (const ch of String(s)) w += /[\u4e00-\u9fa5]/.test(ch) ? fs : fs * .6;
   return w;
 }
+// 航站楼名 → 短标（2号航站楼/一号航站楼/Terminal 2/T3A → T2/T1/T2/T3A）
+function termTag(name){
+  const s = String(name || "").trim();
+  if (!s) return "";
+  let m = /(?:^|[^A-Za-z])T\s*(\d{1,2}\s*[A-Za-z]?)/i.exec(s);
+  if (m) return "T" + m[1].replace(/\s+/g, "").toUpperCase();
+  m = /(\d{1,2})\s*号?\s*航站楼/.exec(s) || /terminal\s*(\d{1,2})/i.exec(s);
+  if (m) return "T" + m[1];
+  m = /([一二三四五六七八九十])\s*号\s*航站楼/.exec(s);
+  if (m) return "T" + ({一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10})[m[1]];
+  m = /\b(S\d{1,2})\b/i.exec(s);
+  if (m) return m[1].toUpperCase();
+  return s.length <= 4 && !/厅|楼|机位/.test(s) ? s : "";
+}
 function airportDiagram(a, g, zc, k, vb){
   const rwys = runwaysOf(a, g);
   if (!rwys.length) return '';
@@ -528,16 +542,53 @@ function airportDiagram(a, g, zc, k, vb){
       const pts = t.p.map(q => { const [x, y] = pt(q); return nf(x) + "," + nf(y); }).join(" ");
       out += `<polyline points="${pts}" fill="none" stroke="#4b5865" stroke-width="${Math.max(M(t.w || 23), 4 / zc)}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
     }
-    // 航站楼轮廓
+    // 航站楼轮廓（T1/T2 标在楼内）
     for (const t of (TERM_DATA.ap[a.id] || [])) {
       if (!t.r || t.r.length < 3) continue;
-      out += `<polygon points="${poly(t.r)}" fill="#233242" stroke="#5b7c96" stroke-width="${fs(1)}" stroke-opacity=".9"/>`;
-      if (t.n && t.n.length <= 8) {
-        const cx = t.r.reduce((s, q) => s + q[1], 0) / t.r.length;
-        const cy = t.r.reduce((s, q) => s + q[0], 0) / t.r.length;
-        const [lx, ly] = pt([cy, cx]);
-        out += `<text x="${nf(lx)}" y="${nf(ly)}" text-anchor="middle" fill="#9fc0d8" style="font-size:${fs(7)}px;font-weight:600">${esc(t.n)}</text>`;
+      const ring = t.r.map(q => { const [x, y] = pt(q); return [x, y]; });
+      out += `<polygon points="${ring.map(q => nf(q[0]) + "," + nf(q[1])).join(" ")}" fill="#233242" stroke="#5b7c96" stroke-width="${fs(1)}" stroke-opacity=".9"/>`;
+      const tag = termTag(t.n);
+      if (!tag) continue;
+      let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+      for (const q of ring) { if (q[0] < minX) minX = q[0]; if (q[0] > maxX) maxX = q[0]; if (q[1] < minY) minY = q[1]; if (q[1] > maxY) maxY = q[1]; }
+      // 面积加权重心，保证落在楼里
+      let A2 = 0, cx = 0, cy = 0;
+      for (let i = 0; i < ring.length; i++) {
+        const p0 = ring[i], p1 = ring[(i + 1) % ring.length];
+        const f = p0[0] * p1[1] - p1[0] * p0[1];
+        A2 += f; cx += (p0[0] + p1[0]) * f; cy += (p0[1] + p1[1]) * f;
       }
+      if (Math.abs(A2) < 1e-9) continue;
+      cx /= 3 * A2; cy /= 3 * A2;
+      // 凹形/环形航站楼的重心可能落在楼外，退化为楼内离重心最近的点
+      const inPoly = (px, py, ring) => {
+        let c = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const a = ring[i], b = ring[j];
+          if (((a[1] > py) !== (b[1] > py)) && (px < (b[0] - a[0]) * (py - a[1]) / (b[1] - a[1]) + a[0])) c = !c;
+        }
+        return c;
+      };
+      if (!inPoly(cx, cy, ring)) {
+        let best = null;
+        for (let ix = 1; ix < 24; ix++) for (let iy = 1; iy < 24; iy++) {
+          const px = minX + (maxX - minX) * ix / 24;
+          const py = minY + (maxY - minY) * iy / 24;
+          if (!inPoly(px, py, ring)) continue;
+          const d = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+          if (!best || d < best.d) best = { d, px, py };
+        }
+        if (!best) continue;
+        cx = best.px; cy = best.py;
+      }
+      // 楼在屏幕上的宽度，标牌放不下就缩字号
+      const wWorld = maxX - minX;
+      if (wWorld * zc < 14) continue;                       // 屏幕上不足 14px 的楼不标
+      const base = 7;                                       // 屏幕 px
+      const need = tag.length * base * 0.62 / zc;
+      const sz = need > wWorld * 0.8 ? base * (wWorld * 0.8 / need) : base;
+      if (sz < 4.5) continue;
+      out += `<text x="${nf(cx)}" y="${nf(cy)}" text-anchor="middle" fill="#cfe2f2" style="font-size:${fs(sz)}px;font-weight:700;paint-order:stroke;stroke:#16222e;stroke-width:${fs(1.8)}px">${esc(tag)}</text>`;
     }
   }
 
