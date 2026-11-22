@@ -88,6 +88,13 @@
   .topbar input{width:100%;background:#0e1720;color:var(--txt);border:1px solid var(--line);
     border-radius:10px;padding:10px 12px;font-size:13px}
   .hint{color:#6f8698;font-size:10.5px;margin:0 2px 8px}
+#aptBoard{position:absolute;top:54px;right:10px;z-index:6;display:none;min-width:212px;
+  background:rgba(11,22,32,.93);border:1px solid #2c4a5e;border-radius:9px;padding:9px 11px;
+  font-size:12px;color:#dfe8f2;box-shadow:0 6px 20px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
+#aptBoard h4{margin:0 0 7px;font-size:13px;color:#ffe6b8;font-weight:700}
+#aptBoard .r{display:flex;justify-content:space-between;gap:14px;line-height:1.55}
+#aptBoard .k{color:#8fb3c9}
+#aptBoard .v{color:#eef5fb;font-weight:700;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -129,6 +136,7 @@
       <div><i style="background:#ffd27f"></i>机场（点开看频率）</div>
       <div style="margin-top:3px;color:#5d7386">双指缩放 · 拖动平移 · 放大到机场显示跑道与频率</div>
     </div>
+    <div id="aptBoard"></div>
     <div id="zoom">
       <button id="zin">+</button><button id="zout">−</button><button id="zfit">⤢</button>
     </div>
@@ -378,6 +386,20 @@ function render(keepView){
       }
       g += `<text x="${nf(lx)}" y="${nf(ly)}" text-anchor="${pick.anc}" fill="#ffe6b8" style="font-size:${fs1 / zc}px;font-weight:700;paint-order:stroke;stroke:#081016;stroke-width:${2.2 / zc}px">${esc(label)}</text>`;
     });
+  }
+
+  // 固定频率牌：只在道面尺度出现，取视窗中心最近的机场
+  if (!diagOn) updateBoard(null);
+  else {
+    let best = null, bd = Infinity;
+    const cxw = (vb.x0 + vb.x1) / 2, cyw = (vb.y0 + vb.y1) / 2;
+    const lim = (vb.x1 - vb.x0) * 0.45;
+    for (const a of D.airports) {
+      const [ax2, ay2] = pt(a.arp);
+      const d = Math.hypot(ax2 - cxw, ay2 - cyw);
+      if (d < bd) { bd = d; best = a; }
+    }
+    updateBoard(best && bd < lim ? best : null);
   }
 
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
@@ -683,36 +705,6 @@ function airportDiagram(a, g, zc, k, vb){
     }
   }
 
-  // 频率牌：塔台按跑道分列
-  const uniq = types => {
-    const arr = [];
-    (a.comms || []).forEach(c => { if (types.includes(c.type) && c.f && !arr.includes(c.f)) arr.push(c.f); });
-    return arr.slice(0, 2).join(' / ');
-  };
-  const lines = [];
-  const twrs = a.twr || [];
-  if (twrs.length) {
-    twrs.slice(0, 4).forEach(t => {
-      lines.push(['塔台 TWR' + (t.rwys && t.rwys.length ? ' ' + t.rwys.join('/') : ''), t.f + (t.alt ? ' / ' + t.alt : '')]);
-    });
-  }
-  const gd = uniq(['GND']); if (gd) lines.push(['地面 GND', gd]);
-  const ap = uniq(['APN', 'RAMP']); if (ap) lines.push(['机坪 APN', ap]);
-  const at = uniq(['ATIS']); if (at) lines.push(['通播', at]);
-  {
-    const fsz = 9, lh = 12, hh = 14;
-    const title = (a.nameCn || a.id) + ' ' + a.id + ' · 跑道频率';
-    const wpx = Math.max(textW(title, 9), ...lines.map(l => textW(l[0] + '  ' + l[1], fsz))) + 12;
-    const hpx = hh + lines.length * lh + 8;
-    const bxp2 = vb.x1 - (wpx + 14) / zc, byp2 = vb.y0 + 10 / zc;
-    out += `<rect x="${nf(bxp2)}" y="${nf(byp2)}" width="${fs(wpx + 2)}" height="${fs(hpx)}" rx="${fs(3)}" fill="#0b1620" fill-opacity=".9" stroke="#2c4a5e" stroke-width="${fs(1)}"/>`;
-    out += `<text x="${nf(bxp2 + 6 / zc)}" y="${nf(byp2 + 10 / zc)}" fill="#ffe6b8" style="font-size:${fs(9)}px;font-weight:700">${esc(title)}</text>`;
-    lines.forEach((l, i) => {
-      const yy = byp2 + (hh + i * lh + 8) / zc;
-      out += `<text x="${nf(bxp2 + 6 / zc)}" y="${nf(yy)}" fill="#8fb3c9" style="font-size:${fs(fsz)}px">${esc(l[0])}</text>`;
-      out += `<text x="${nf(bxp2 + (wpx - 6) / zc)}" y="${nf(yy)}" text-anchor="end" fill="#e8eef5" style="font-size:${fs(fsz)}px;font-weight:700">${esc(l[1])}</text>`;
-    });
-  }
   return out;
 }
 // 让整个机场道面正好铺满视窗（跳转时用）
@@ -783,6 +775,31 @@ function fr(k, f, tag, ex){
     ${tag ? `<span class="tag">${esc(tag)}</span>` : ''}${ex ? `<div class="ex">${esc(ex)}</div>` : ''}</div>`;
 }
 const FREQ_TAG = {TWR:'塔台', GND:'地面', DEL:'放行', Delivery:'放行', APN:'机坪', RAMP:'机坪', ATIS:'通播', APP:'进近', ACC:'区调', CTR:'管制', FIS:'情报', EMG:'应急', 'OP-CTL':'管制', AOC:'签派'};
+// 左上/右上固定频率牌：跟随视窗，不随地图平移
+function uniqFreqs(a, types){
+  const arr = [];
+  (a.comms || []).forEach(c => { if (types.includes(c.type) && c.f && !arr.includes(c.f)) arr.push(c.f); });
+  return arr.slice(0, 2).join(" / ");
+}
+function updateBoard(a){
+  const el = document.getElementById("aptBoard");
+  if (!el) return;
+  if (!a) { el.style.display = "none"; return; }
+  const rows = [];
+  const twrs = a.twr || [];
+  if (twrs.length) {
+    twrs.slice(0, 4).forEach(t => rows.push(["塔台 TWR" + (t.rwys && t.rwys.length ? " " + t.rwys.join("/") : ""), t.f + (t.alt ? " / " + t.alt : "")]));
+  } else {
+    const tw = uniqFreqs(a, ["TWR"]);
+    if (tw) rows.push(["塔台 TWR", tw]);
+  }
+  const gd = uniqFreqs(a, ["GND"]); if (gd) rows.push(["地面 GND", gd]);
+  const ap = uniqFreqs(a, ["APN", "RAMP"]); if (ap) rows.push(["机坪 APN", ap]);
+  const at = uniqFreqs(a, ["ATIS"]); if (at) rows.push(["通播 ATIS", at]);
+  el.innerHTML = `<h4>${esc(a.nameCn || a.id)} ${esc(a.id)} · 跑道频率</h4>` +
+    rows.map(r => `<div class="r"><span class="k">${esc(r[0])}</span><span class="v">${esc(r[1])}</span></div>`).join("");
+  el.style.display = "block";
+}
 function showAirport(i){
   const a = D.airports[i];
   if (!a) return;
