@@ -28,7 +28,7 @@ const FNS = ['makeProjection', 'nationalBounds', 'clampView', 'viewBounds', 'pt'
   'zoomCap', 'clampZoom', 'centroid', 'inPoly', 'vfmt', 'pf', 'textW', 'grid', 'placeLabels', 'render',
   'callShort', 'vband', 'freqParts', 'ctrKind', 'segDist', 'anchorsInPoly', 'sectorShort', 'subCfg', 'nameJoin', 'geomKey', 'vtop', 'mkLabelVariants'];
 
-const W = 400, H = 700;
+const W = Number(process.env.CANVAS_W || 400), H = Number(process.env.CANVAS_H || 700);
 const svgShim = {
   clientWidth: W, clientHeight: H, innerHTML: '',
   getBoundingClientRect: () => ({ width: W, height: H, left: 0, top: 0 }),
@@ -88,12 +88,26 @@ this.API = {
   get stats(){ return window.__labelStats; },
   resetLabels(){ LABEL_POS = new WeakMap(); },
   zoomIn(){ zoom = Math.min(zoomCap(), zoom * 1.4); render(true); return zoom; },
+  zoomTo(z){ zoom = clampZoom(z); render(true); return zoom; },
   vb(){ return viewBounds(); },
   setFocus(id){ focus = id; }
 };
 `;
 vm.runInContext(prelude, sandbox);
 const API = sandbox.API;
+if (process.env.PINTEST) {
+  API.setFocus(process.env.PINTEST);
+  API.render(false);
+  const seq = [12, 18, 24, 31, 40, 52, 64, 74, 60, 45, 33, 27, 22, 30, 48, 70];
+  let last = 1;
+  for (const z of seq) {
+    const got = API.zoomTo(z); last = got;
+    const st = API.stats || {};
+    console.log("z", got.toFixed(1), "drawn", st.drawn, "dropped", st.dropped, "lost", (st.lost||[]).length);
+  }
+  fs.writeFileSync(require("path").join(ROOT, process.env.PINOUT || 'build/.freq-check/pin.svg'), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#0a0f16"/><g transform="translate(${(sandbox.API.proj.ox * (1 - last) + sandbox.API.proj.tx).toFixed(2)},${(sandbox.API.proj.oy * (1 - last) + sandbox.API.proj.ty).toFixed(2)}) scale(${last})">${svgShim.innerHTML}</g></svg>`);
+  process.exit(0);
+}
 if (process.env.ZOOMTEST) {
   const id = process.env.ZOOMTEST;
   API.setFocus(id);

@@ -776,7 +776,7 @@ function placeLabels(items, seed, ui){
     const put = (text, size, cls, fill) => {
       if (!text) return;
       lines.push({text, size, cls, fill, dy});
-      w = Math.max(w, textW(text, size));
+      w = Math.max(w, textW(text, size) * 1.06 + 2);   // 框比字略宽，宁可少放一块也不让字压字
       dy += size * 1.16;
     };
     if (v.header) put(v.header, it.fs * 1.02, 'lbl', it.nameFill);
@@ -788,7 +788,7 @@ function placeLabels(items, seed, ui){
     });
     return {lines, w, h: dy};
   };
-  const rectOf = (b, x, y, fs) => [x - b.w / 2 / fsr - 1.2 / fsr, y - fs * .95 / fsr, (b.w + 2.4) / fsr, (b.h + 1.6) / fsr];
+  const rectOf = (b, x, y, fs) => [x - b.w / 2 / fsr - 2 / fsr, y - fs * .95 / fsr, (b.w + 4) / fsr, (b.h + 2.4) / fsr];
   // 只放完整落在视窗里的标注：贴边只露出一半的标签直接不画（既不裁字，也不随平移滑动）
   const inViewRect = r => r[0] >= vw.x0 && r[0] + r[2] <= vw.x1 && r[1] >= vw.y0 && r[1] + r[3] <= vw.y1;
   const uiHit = r => (ui || []).some(q => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1]);
@@ -855,9 +855,22 @@ function placeLabels(items, seed, ui){
     }
   }
   // 第三遍：按优先级输出
+  // 落笔前的最后一道重叠检查：用最终坐标再算一次矩形（并留 2px 余量），
+  // 前面几遍即使因为字号/锚点估计偏差漏判，也不会把两行字印在一起
+  const drawnRects = [];
+  const hitDrawn = r => drawnRects.some(p => r[0] < p[0] + p[2] && r[0] + r[2] > p[0] && r[1] < p[1] + p[3] && r[1] + r[3] > p[1]);
   for (const it of items) {
     const done = chosen.get(it);
     if (!done) continue;
+    const rr = rectOf(done.b, done.x, done.y, it.fs);
+    const pad0 = 1.5 / fsr;
+    if (hitDrawn([rr[0] - pad0, rr[1] - pad0, rr[2] + 2 * pad0, rr[3] + 2 * pad0])) {
+      dropped++;
+      const kk = it.kind || 'other';
+      (byKind[kk] = byKind[kk] || {drawn: 0, dropped: 0}).dropped++;
+      continue;
+    }
+    drawnRects.push(rr);
     drawn++;
     if (it.obj) LABEL_POS.set(it.obj, {x: done.x, y: done.y, h: done.b.h});
     (byKind[it.kind || 'other'] = byKind[it.kind || 'other'] || {drawn: 0, dropped: 0}).drawn++;
