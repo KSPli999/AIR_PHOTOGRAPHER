@@ -73,6 +73,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 const path = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + nf(x) + ' ' + nf(y); }).join(' ') + ' Z';
 const linePath = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + nf(x) + ' ' + nf(y); }).join(' ');
 const ANCH_CACHE = new WeakMap();
+const FS_K = 0.84, APTDOT_K = 0.78, APTNAME_K = 0.86;
 let LABEL_POS = new WeakMap();
 let lastProjKey = '';
 const ringsOf = o => o.rings || [o.pts];

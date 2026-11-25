@@ -370,6 +370,10 @@ function anchorsInPoly(o){
 
 // ---------- state ----------
 const layerOn = {acc: true, tma: true, twr: true, apt: true};
+// 字号 / 机场点的整体缩放：想让字和点更小就调这两个数，不用逐个改阈值
+const FS_K = 0.84;    // 空域频率标注字号系数
+const APTDOT_K = 0.78; // 机场圆点半径系数
+const APTNAME_K = 0.86; // 机场名（中文名 + ICAO）字号系数
 // 每个空域标注记住上一次落点：平移/缩放时先回到原位，避免字到处跳
 let LABEL_POS = new WeakMap();
 let lastProjKey = '';
@@ -450,7 +454,7 @@ function render(keepView){
     if (!anchors.length) return;
     labels.push({
       obj: o, anchors, variants: mkLabelVariants(cfg.header || '', members),
-      prio: cfg.prio, fs: cfg.fs || 9, area: cfg.area || 0, kind: cfg.kind || '',
+      prio: cfg.prio, fs: (cfg.fs || 9) * FS_K, area: cfg.area || 0, kind: cfg.kind || '',
       nameFill: cfg.nameFill || '#cfe6f5', freqFill: cfg.freqFill || '#39d0ff', noteFill: cfg.noteFill || '#93a9bb'
     });
   };
@@ -655,31 +659,45 @@ function render(keepView){
     D.airports.forEach((a, i) => {
       const [x, y] = pt(a.arp);
       const big = a.comms.some(c => c.type === "TWR");
-      const rPx = diagOn ? (big ? 3.6 : 2.8) : (big ? 3 : 2.2);
+      const rPx = (diagOn ? (big ? 3.2 : 2.5) : (big ? 2.6 : 1.9)) * APTDOT_K;
       g += `<circle class="aptdot" data-kind="apt" data-i="${i}" cx="${nf(x)}" cy="${nf(y)}" r="${rPx / Math.max(1, zc / 2)}"
         fill="#ffd27f" fill-opacity=".95" stroke="#3a2a10" stroke-width="${(0.8 / zc).toFixed(3)}"/>`;
       const nm = (a.nameCn || a.id).split("/")[0];
       const label = nm + " " + a.id;
-      const fs1 = zc < 1.7 ? 7.8 : 9.2;
+      const fs1 = (zc < 1.7 ? 7.8 : 9.2) * APTNAME_K;
       const bw = (textW(label, fs1) + 3) / zc, bh = (fs1 + 3) / zc;
+      // 名字与自己的点之间留出点半径的距离，避免字压在自己的圆点上
+      const dotR = rPx / Math.max(1, zc / 2), dotPx = dotR * zc;
+      const gap = dotPx + 4, rowH = fs1 + 5;
       const cands = [];
-      for (const dy of [-7, 14, -19, 26, -31, 38, -45]) { cands.push([5, dy, "start"], [-5, dy, "end"]); }
-      cands.push([30, 2, "start"], [-30, 2, "end"], [50, 2, "start"], [-50, 2, "end"]);
-      let pick = null;
+      cands.push([gap, 2, "start"], [-gap, 2, "end"]);
+      for (let k = 0; k < 5; k++) {
+        const up = -(gap + k * rowH);                 // 基线在点上方
+        const dn = fs1 * 0.8 + gap + k * rowH;        // 基线在点下方
+        cands.push([gap, up, "start"], [-gap, up, "end"], [gap, dn, "start"], [-gap, dn, "end"]);
+      }
+      cands.push([gap + 24, 2, "start"], [-gap - 24, 2, "end"], [gap + 48, 2, "start"], [-gap - 48, 2, "end"]);
+      let pick = null, bestOv = Infinity;
+      const pad = 2 / zc;                    // 预留 2px 间隙，避免两块字擦边
+      const ovl = (r, q) => {
+        const w0 = Math.max(r[0] - pad, q[0] - pad), w1 = Math.min(r[0] + r[2] + pad, q[0] + q[2] + pad);
+        const h0 = Math.max(r[1] - pad, q[1] - pad), h1 = Math.min(r[1] + r[3] + pad, q[1] + q[3] + pad);
+        return w1 > w0 && h1 > h0 ? (w1 - w0) * (h1 - h0) : 0;
+      };
       for (const [dx, dy, anc] of cands) {
         const x0 = (dx >= 0 ? x + dx / zc : x + dx / zc - bw);
         const y0 = y + (dy - fs1) / zc;
         const r = [x0, y0, bw, bh];
-        const hit = boxes.some(q => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1]);
-        const fits = inViewRect(r);
-        if (!pick) pick = { dx, dy, anc, r, fits };
-        if (!hit && fits) { pick = { dx, dy, anc, r, fits }; break; }
-        if (!pick.fits && fits) pick = { dx, dy, anc, r, fits };
+        if (!inViewRect(r)) continue;
+        let ov = 0;
+        for (const q of boxes) ov += ovl(r, q);
+        if (ov < bestOv) { bestOv = ov; pick = { dx, dy, anc, r }; }
+        if (ov === 0) break;
       }
+      if (!pick) return;                       // 贴边的名字不画，点还在
+      // 真挤不下时宁可不写名字：两个字叠在一起比缺一个名字更糟
+      if (bestOv > 0) return;
       boxes.push(pick.r);
-      // 找不到既不压面板、又完整在视窗内的位置时，这个机场名不画（点还在）
-      const underUI = uiSeed.some(q => pick.r[0] < q[0] + q[2] && pick.r[0] + pick.r[2] > q[0] && pick.r[1] < q[1] + q[3] && pick.r[1] + pick.r[3] > q[1]);
-      if (underUI || !inViewRect(pick.r)) return;
       const lx = x + pick.dx / zc, ly = y + pick.dy / zc;
       if (Math.hypot(pick.dx, pick.dy) > 18) {
         g += `<line x1="${nf(x)}" y1="${nf(y)}" x2="${nf(lx)}" y2="${nf(ly)}" stroke="#5f7285" stroke-width="${0.8 / zc}" stroke-opacity=".7"/>`;
