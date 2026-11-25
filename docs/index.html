@@ -1144,23 +1144,28 @@ function airportDiagram(a, g, zc, k, vb, lite){
       }
     }
 
-    // 跑道号：沿跑道方向，翻正可读
+    // 跑道号：画在道面里，像真实的跑道号码标志；字号跟着道面宽度走，
+    // 道面太窄（<5px）就不画，免得一个 9.5px 的字压在 5px 宽的跑道上
     let rot = Math.atan2(dy, dx) * 180 / Math.PI;
     if (rot > 90 || rot <= -90) rot += 180;
+    const numFs = Math.min(11, Math.max(4.5, W * zc * 0.68));
+    const numGap = Math.min(M(52), L * 0.12);
     const numAt = (d, ex, ey, dir) => {
-      if (!d) return;
-      text(d, ex + ux * dir * M(52), ey + uy * dir * M(52), 9.5, '#ffffff', rot);
+      if (!d || W * zc < 6) return;   // 道面不到 6px 宽时不画号，画了也只是道面上的一团糊
+      text(d, ex + ux * dir * numGap, ey + uy * dir * numGap, numFs, '#ffffff', rot);
     };
     if (!lite) numAt(rw.la, x1, y1, 1);
     if (!lite) numAt(rw.lb, x2, y2, -1);
 
-    // ILS 标牌：跑道端外侧，CAT + 频率
+    // ILS 标牌：整块落在跑道端之外，绝不压到道面/跑道号上
     const ilsAt = (d, ex, ey, dir) => {
       const e = ends[d];
       if (!e || !e.ils) return;
       const cat = e.ils.cat || 'ILS';
       const txt = `${cat} ${e.ils.locF}`;
-      text(txt, ex - ux * dir * M(34), ey - uy * dir * M(34), 7, '#7fe3ff', rot);
+      const tw = textW(txt, 7) / zc;      // 文字长度换算成世界坐标
+      const off = tw / 2 + M(30);
+      text(txt, ex - ux * dir * off, ey - uy * dir * off, 7, '#7fe3ff', rot);
     };
     if (!lite) ilsAt(rw.la, x1, y1, 1);
     if (!lite) ilsAt(rw.lb, x2, y2, -1);
