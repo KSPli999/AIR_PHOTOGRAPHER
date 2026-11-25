@@ -884,11 +884,24 @@ function aipRunways(a){
 }
 const angDiff = (a, b) => { let d = Math.abs(a - b) % Math.PI; return Math.min(d, Math.PI - d); };
 function runwaysOf(a, g){
-  const list = ((RWY_DATA.rwy || {})[a.id] || []).map(r => ({ le: r.le, he: r.he, w: r.w || 45, la: r.a, lb: r.b }));
-  // 没有阈值坐标的机场，用 OSM 跑道线兜底
+  const cosA = Math.cos(a.arp[0] * Math.PI / 180);
+  // RWY.json 里可能残留机场搬迁前的旧数据（如 ZBHH 盛乐存着白塔的 08/26，离本场 46 km），
+  // 离本场参考点太远的直接丢掉，交给下面的 AIP/OSM 兜底重新取线位
+  const farFromArp = r => {
+    const mid = [(r.le[0] + r.he[0]) / 2, (r.le[1] + r.he[1]) / 2];
+    const dy = (mid[0] - a.arp[0]) * 111320, dx = (mid[1] - a.arp[1]) * 111320 * cosA;
+    return Math.hypot(dx, dy) > 6000;
+  };
+  const list = ((RWY_DATA.rwy || {})[a.id] || []).filter(r => !farFromArp(r))
+    .map(r => ({ le: r.le, he: r.he, w: r.w || 45, la: r.a, lb: r.b }));
+  // 没有阈值坐标的机场，用 OSM 跑道线兜底（rf 为空或重复的 OSM 线位跳过，否则会多画一条幽灵跑道）
+  const osmSeen = new Set();
   if (!list.length && g && g.rwy) for (const r of g.rwy) {
     if (!r.p || r.p.length < 2) continue;
-    const ds = String(r.rf || "").split(/[/-]/);
+    const rf = String(r.rf || "").trim();
+    if (!rf || osmSeen.has(rf)) continue;
+    osmSeen.add(rf);
+    const ds = rf.split(/[/-]/);
     list.push({ le: r.p[0], he: r.p[r.p.length - 1], w: r.w || 45, la: (ds[0] || "").trim(), lb: (ds[1] || "").trim() });
   }
   const have = new Set();
@@ -897,8 +910,23 @@ function runwaysOf(a, g){
   const toM = (la, lo) => [(lo - a.arp[1]) * 111320 * cos, (la - a.arp[0]) * 111320];
   const toLL = (x, y) => [a.arp[0] + y / 111320, a.arp[1] + x / (111320 * cos)];
   let extra = 0;
+  // AIP 有时把同一条跑道改名为带 L/R/C 的号（如既有 04/22 又列 04R/22L），
+  // 这种“一边带侧别、一边不带”的同号跑道视为同一条，不再补画，避免多出一条幽灵跑道
+  const stripSide = s => String(s || '').replace(/[LRC]$/, '');
+  const hasSide = s => /[LRC]$/.test(String(s || ''));
+  const samePhysical = rw => list.some(r =>
+    ((r.la && rw.a && stripSide(r.la) === stripSide(rw.a) && hasSide(r.la) !== hasSide(rw.a)) ||
+     (r.lb && rw.b && stripSide(r.lb) === stripSide(rw.b) && hasSide(r.lb) !== hasSide(rw.b))));
   for (const rw of aipRunways(a)) {
     if (have.has(rw.a) || have.has(rw.b)) continue;
+    if (samePhysical(rw)) {
+      // 同一条跑道，eAIP 改了号（04 → 04R）：只把号更新到已画的那条上
+      const q = list.find(r =>
+        (r.la && rw.a && stripSide(r.la) === stripSide(rw.a) && hasSide(r.la) !== hasSide(rw.a)) ||
+        (r.lb && rw.b && stripSide(r.lb) === stripSide(rw.b) && hasSide(r.lb) !== hasSide(rw.b)));
+      if (q) { q.la = rw.a; q.lb = rw.b; }
+      continue;
+    }
     // OSM 里有这条跑道就用真实线位
     const osm = ((g && g.rwy) || []).find(w => {
       const refs = String(w.rf || "").split(/[\/\-,\s]+/).filter(Boolean);
@@ -930,7 +958,43 @@ function runwaysOf(a, g){
       extra++;
     }
     const hx = Math.sin(h) * rw.len / 2, hy = Math.cos(h) * rw.len / 2;
-    list.push({ le: toLL(cx - hx, cy - hy), he: toLL(cx + hx, cy + hy), w: rw.w, la: rw.a, lb: rw.b });
+    list.push({ le: toLL(cx - hx, cy - hy), he: toLL(cx + hx, cy + hy), w: rw.w, la: rw.a, lb: rw.b, syn: 1, aipA: rw.a, aipB: rw.b });
+  }
+  // 兜底合成的跑道若与已有跑道几乎重合（同向、中心距 < 450 m、长度接近），
+  // 说明是同一条跑道换了编号（如威海 02/20 → 03/21）：丢掉合成的，但把 AIP 的新号挪到留下的那条上
+  const geo = r => {
+    const [x1, y1] = toM(r.le[0], r.le[1]), [x2, y2] = toM(r.he[0], r.he[1]);
+    return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, ang: Math.atan2(x2 - x1, y2 - y1), len: Math.hypot(x2 - x1, y2 - y1) };
+  };
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (!list[i].syn) continue;
+    const g1 = geo(list[i]);
+    const q = list.find((c, j) => {
+      if (j === i || c.syn) return false;
+      const g2 = geo(c);
+      return angDiff(g1.ang, g2.ang) < 0.18 && Math.hypot(g1.cx - g2.cx, g1.cy - g2.cy) < 450 &&
+        g1.len > g2.len * 0.85 && g1.len < g2.len * 1.15;
+    });
+    if (q) {
+      q.la = list[i].aipA || q.la; q.lb = list[i].aipB || q.lb;
+      list.splice(i, 1);
+    }
+  }
+  // 统一朝向：le 必须是 la 号跑道那一头。OSM 的线位首尾是任意的，
+  // 用 AIP 磁航向校对，方向反了就把两端（连同跑道号）对调，免得 07/25 的跑道号画反
+  const hdgOf = new Map();
+  for (const r of aipRunways(a)) {
+    if (r.a != null && r.hdg != null) hdgOf.set(String(r.a).toUpperCase(), r.hdg);
+    if (r.b != null && r.hdg != null) hdgOf.set(String(r.b).toUpperCase(), (r.hdg + 180) % 360);
+  }
+  for (const rw of list) {
+    const hdg = hdgOf.get(String(rw.la || "").toUpperCase());
+    if (hdg == null) continue;
+    const [x1, y1] = toM(rw.le[0], rw.le[1]), [x2, y2] = toM(rw.he[0], rw.he[1]);
+    const dir = (Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI + 360) % 360;
+    if (Math.abs(((dir - hdg + 540) % 360) - 180) > 90) {
+      const t = rw.le; rw.le = rw.he; rw.he = t;
+    }
   }
   return list;
 }
