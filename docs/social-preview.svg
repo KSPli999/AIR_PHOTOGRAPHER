@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f16"/><stop offset="1" stop-color="#101b26"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#g)"/>
+  <image xlink:href="moment-bg.png" x="700" y="0" width="580" height="640" preserveAspectRatio="xMidYMid slice" opacity="0.55"/>
+  <rect x="640" y="0" width="640" height="640" fill="#0a0f16" opacity="0.55"/>
+  <text x="72" y="150" font-family="sans-serif" font-size="58" font-weight="bold" fill="#ffffff">天际电波 SKYWAVE</text>
+  <text x="72" y="205" font-family="sans-serif" font-size="27" fill="#8fc9e8">Airband atlas of China — tower / approach / area-control frequencies on one map</text>
+  <text x="72" y="278" font-family="sans-serif" font-size="27" fill="#cfe6f5">82 airports · 300 area-control sectors · 280 approach sectors</text>
+  <text x="72" y="326" font-family="sans-serif" font-size="24" fill="#9fb6c9">Fully offline · single HTML / Android APK · no network, no tracking</text>
+  <text x="72" y="374" font-family="sans-serif" font-size="24" fill="#9fb6c9">Frequencies are placed inside the airspace block they belong to</text>
+  <rect x="72" y="430" width="248" height="46" rx="8" fill="#13202c" stroke="#2a4b5e"/>
+  <text x="92" y="461" font-family="sans-serif" font-size="22" fill="#7fe3ff">eAIP 2026-12 (V1.3)</text>
+  <rect x="336" y="430" width="170" height="46" rx="8" fill="#13202c" stroke="#2a4b5e"/>
+  <text x="356" y="461" font-family="sans-serif" font-size="22" fill="#7fe3ff">DEMO build</text>
+  <text x="72" y="560" font-family="sans-serif" font-size="20" fill="#6f8698">Schematic only — not for navigation. Data: public eAIP China (mainland).</text>
+  <text x="72" y="592" font-family="sans-serif" font-size="20" fill="#5f7386">github.com/KSPli999/AIR_PHOTOGRAPHER</text>
+</svg>

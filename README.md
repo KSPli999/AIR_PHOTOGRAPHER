@@ -1,10 +1,44 @@
-<p align="center"><img src="docs/icon.png" width="132" alt="SKYWAVE"></p>
+<p align="center"><img src="docs/icon.png" width="96" alt="SKYWAVE"></p>
 
-# 天际电波 · SKYWAVE
+<h1 align="center">天际电波 · SKYWAVE</h1>
 
-> 拍机人的航空波段图鉴：把 118–137 MHz 的塔台、进近、区调频率画到空域图上。按下快门前，先知道该听哪个波道。
+<p align="center">
+  <img src="docs/badge-apk.svg" alt="Android APK DEMO"> <img src="docs/badge-offline.svg" alt="100% offline">
+  <img src="docs/badge-nonet.svg" alt="no network"> <img src="docs/badge-cycle.svg" alt="eAIP 2026-12">
+</p>
 
-![天际电波 预览](docs/preview.svg)
+<p align="center">
+  <b>把全国空管频率，按它所属的空域画回地图上。</b><br>
+  塔台 / 地面 / 放行 / 机坪 / 通播 / 进近 / 区调 —— 82 个机场、300 个区调扇区、280 个进近扇区，离线可用。<br>
+  <sub>Tower / approach / area-control frequencies of China, placed inside the airspace blocks they belong to. Fully offline.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/KSPli999/AIR_PHOTOGRAPHER/raw/main/apk/skywave-demo-v36.apk"><b>⬇️ 下载 DEMO APK（安卓直装）</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/KSPli999/AIR_PHOTOGRAPHER/main/docs/index.html"><b>▶️ 在线试玩（免安装）</b></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/KSPli999/AIR_PHOTOGRAPHER"><img src="docs/social-preview.png" alt="天际电波 SKYWAVE" width="880"></a>
+</p>
+
+> **如果这个项目帮你少翻了 200 页 AIP，给个 ⭐ 吧** —— 星标是它继续更新下一个 eAIP 周期的唯一动力。
+> If SKYWAVE saved you a few hours of digging through AIP tables, a star helps keep it updated every cycle.
+
+| 一张图能看到的 | |
+|---|---|
+| 全国视角 | 机场点 + 「北京 ZBAA」，不画缩小图，一眼看清分布 |
+| 区域视角 | 频率按区块标注，同几何叠层扇区合并、按高度自上而下 |
+| 机场视角 | 跑道 / 跑道号 / ILS / 塔台·地面·机坪频率（示意，非航图） |
+
+<p align="center">
+  <img src="docs/label-check-z3.png" width="270" alt="区域视角">
+  <img src="docs/zbhh-diag.png" width="270" alt="机场道面">
+  <img src="docs/moment-poster.png" width="230" alt="主视觉">
+</p>
+
+---
 
 当前数据集：**全国 · 82 个机场 + 24 个管制单位 / 300 个区调扇区 + 280 个进近扇区**
 数据周期：**EAIP 2026-12 (V1.3)**，2026-11-26 生效 / 2026-12-24 失效（2612 期）

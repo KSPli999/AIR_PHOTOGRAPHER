@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 KSPli999
+Copyright (c) 2026 SKYWAVE · 天际电波 (KSPli999)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+数据与二次分发说明 / Data notice
+
+1. 本许可仅覆盖代码（HTML/JS/CSS、构建脚本、APK 壳）。
+2. 频率、空域、跑道等数据整理自中国民航公开 eAIP，版权归原权利人；
+   本项目不代表、也未获民航局/空管局/任何机场授权，数据仅供学习、模拟飞行与资料核对。
+3. 道面几何来自 © OpenStreetMap contributors，按 ODbL 使用；
+   跑道阈值参考 OurAirports（公有领域）。
+4. 本项目不构成航图、导航或飞行依据；不得用于真实飞行、导航、测绘或空域申请。
