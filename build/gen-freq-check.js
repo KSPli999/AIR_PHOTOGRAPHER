@@ -25,7 +25,7 @@ function funcSrc(name) {
 }
 
 const FNS = ['makeProjection', 'nationalBounds', 'clampView', 'viewBounds', 'pt',
-  'centroid', 'inPoly', 'vfmt', 'pf', 'textW', 'grid', 'placeLabels', 'render',
+  'zoomCap', 'clampZoom', 'centroid', 'inPoly', 'vfmt', 'pf', 'textW', 'grid', 'placeLabels', 'render',
   'callShort', 'vband', 'freqParts', 'ctrKind', 'segDist', 'anchorsInPoly', 'sectorShort', 'subCfg', 'nameJoin', 'geomKey', 'vtop', 'mkLabelVariants'];
 
 const W = 400, H = 700;
@@ -74,6 +74,7 @@ const path = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 
 const linePath = pts => pts.map((p, i) => { const [x, y] = pt(p); return (i ? 'L' : 'M') + nf(x) + ' ' + nf(y); }).join(' ');
 const ANCH_CACHE = new WeakMap();
 const FS_K = 0.84, APTDOT_K = 0.78, APTNAME_K = 0.86;
+const MIN_MPP = 6, ZMIN = .7, ZMAX = 3000;
 let LABEL_POS = new WeakMap();
 let lastProjKey = '';
 const ringsOf = o => o.rings || [o.pts];
@@ -85,11 +86,29 @@ this.API = {
   setZoom(z){ zoom = z; },
   setView(tx, ty){ proj.tx = tx; proj.ty = ty; },
   get stats(){ return window.__labelStats; },
-  resetLabels(){ LABEL_POS = new WeakMap(); }
+  resetLabels(){ LABEL_POS = new WeakMap(); },
+  zoomIn(){ zoom = Math.min(zoomCap(), zoom * 1.4); render(true); return zoom; },
+  vb(){ return viewBounds(); },
+  setFocus(id){ focus = id; }
 };
 `;
 vm.runInContext(prelude, sandbox);
 const API = sandbox.API;
+if (process.env.ZOOMTEST) {
+  const id = process.env.ZOOMTEST;
+  API.setFocus(id);
+  API.render(false);
+  let last = null;
+  for (let i = 0; i < 30; i++) {
+    last = API.zoomIn();
+    const vb = API.vb();
+    const st = API.stats || {};
+    console.log("zoom", last.toFixed(1), "vbw", (vb.x1 - vb.x0).toFixed(3), "drawn", st.drawn, "dropped", st.dropped, "html", svgShim.innerHTML.length);
+    if (i > 22) break;
+  }
+  fs.writeFileSync(require("path").join(ROOT,'build/.freq-check/zoomtest.svg'), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#0a0f16"/><g transform="translate(${(sandbox.API.proj.ox * (1 - last) + sandbox.API.proj.tx).toFixed(2)},${(sandbox.API.proj.oy * (1 - last) + sandbox.API.proj.ty).toFixed(2)}) scale(${last})">${svgShim.innerHTML}</g></svg>`);
+  process.exit(0);
+}
 
 const SHOTS = [
   ...(process.env.EXTRA ? [{ name: "extra" + process.env.EXTRA, lat: +process.env.EXTRA.split(",")[0], lon: +process.env.EXTRA.split(",")[1], z: +process.env.EXTRA.split(",")[2] }] : []),

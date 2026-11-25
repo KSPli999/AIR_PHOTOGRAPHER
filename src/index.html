@@ -454,7 +454,9 @@ function render(keepView){
     if (!anchors.length) {
       // 放得很大时整块空域都比视窗大：内部候选锚点全在视窗外，
       // 此时在视窗里补采样点当锚点，否则「放到最大所有频率标注都不见了」
-      const toLL = (x, y) => [proj.lat0 - y / proj.scale, proj.lon0 + x / (proj.cos * proj.scale)];
+      const toLL = (x, y) => [proj.lat0 - (y - proj.oy) / proj.scale, proj.lon0 + (x - proj.ox) / (proj.cos * proj.scale)];
+      const rings = o.rings || (o.pts ? [o.pts] : []);
+      const inAny = ll => { let ins = false; for (const r of rings) if (r && r.length >= 3 && inPoly(ll, r)) ins = !ins; return ins; };
       const pts = [];
       for (const fx of [0.5, 0.34, 0.66, 0.2, 0.8]) {
         for (const fy of [0.5, 0.36, 0.64, 0.22, 0.78]) {
@@ -463,7 +465,7 @@ function render(keepView){
       }
       const cx0 = (vb.x0 + vb.x1) / 2, cy0 = (vb.y0 + vb.y1) / 2;
       pts.sort((a, b) => Math.hypot(a[0] - cx0, a[1] - cy0) - Math.hypot(b[0] - cx0, b[1] - cy0));
-      anchors = pts.filter(p => inPoly(toLL(p[0], p[1]), o)).map(p => ({x: p[0], y: p[1]}));
+      anchors = pts.filter(p => inAny(toLL(p[0], p[1]))).map(p => ({x: p[0], y: p[1]}));
     }
     if (!anchors.length) return;
     labels.push({
@@ -486,14 +488,15 @@ function render(keepView){
       stroke-width="${(1 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-dasharray="${(7 / zc).toFixed(3)} ${(6 / zc).toFixed(3)}"/>`;
   });
   // ---- 区调扇区 ----
-  if (layerOn.acc && !diagOn) {
+  // 道面尺度（diagOn）只关掉多边形填充，频率标注照旧生成：放大到最大也要能看到频率
+  if (layerOn.acc) {
     // 同一块多边形上下叠着多个高度层的扇区：合并成一个「叠层」标注，自上而下排列
     const groups = new Map();
     D.sectors.forEach(s => { const k = geomKey(s); const a = groups.get(k); if (a) a.push(s); else groups.set(k, [s]); });
     const used = new Set();
     D.sectors.forEach((s, i) => {
-      g += `<path class="poly" data-kind="sec" data-i="${i}" d="${pathAll(s)}"
-        fill="#a78bfa" fill-opacity="${diagOn ? 0 : .07}" stroke="#6d5fae" stroke-width="${(0.8 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-opacity=".8"/>`;
+      if (!diagOn) g += `<path class="poly" data-kind="sec" data-i="${i}" d="${pathAll(s)}"
+        fill="#a78bfa" fill-opacity=".07" stroke="#6d5fae" stroke-width="${(0.8 / Math.max(1, zc / 1.6)).toFixed(2)}" stroke-opacity=".8"/>`;
       if (zc < 1.8) return;
       const sb = objBox(s);
       if (!visible(sb)) return;
@@ -527,7 +530,7 @@ function render(keepView){
     });
   }
   // ---- 进近区 ----
-  if (layerOn.tma && !diagOn) {
+  if (layerOn.tma) {
     const hasSub = new Set(D.areas.filter(a => a.sub).map(a => a.icao));
     // 同一频率、几何基本重合的进近扇区（跑道构型变体）只标一次
     const skipArea = new Set();
@@ -630,10 +633,10 @@ function render(keepView){
     });
   }
   // ---- 塔台管制区 / 特殊空域 ----
-  if (layerOn.twr && !diagOn) {
+  if (layerOn.twr) {
     const SPECIAL = {p: '禁飞区', fuel: '放油区', r: '限制区', alt: '高度表转换区', tma: '终端区', other: '特殊空域'};
     D.ctr.forEach((c, i) => {
-      g += `<path class="poly" data-kind="twr" data-i="${i}" d="${pathAll(c)}" fill="#fb7185" fill-opacity="${diagOn ? 0 : .10}"
+      if (!diagOn) g += `<path class="poly" data-kind="twr" data-i="${i}" d="${pathAll(c)}" fill="#fb7185" fill-opacity=".10"
         stroke="#fb7185" stroke-width="${(1 / zc).toFixed(3)}" stroke-opacity=".7"/>`;
       const ap = D.airports.find(x => x.id === c.icao);
       const kind = ctrKind(c);
@@ -1410,7 +1413,7 @@ function copy(txt){
 }
 
 // pan / pinch zoom / 边界限制
-const ZMIN = .7, ZMAX = 12000;
+const ZMIN = .7, ZMAX = 3000;
 let drag = null, pinch = null, suppressClick = false;
 const pointers = new Map();
 function localXY(e){
@@ -1418,7 +1421,8 @@ function localXY(e){
   return {x: e.clientX - r.left, y: e.clientY - r.top};
 }
 // 缩放上限随投影比例变化：最深约 1 米/像素，全国视角和聚焦视角手感一致
-const MIN_MPP = 2.2;
+// 最深倍率：1px ≈ 6 m（视野约 2.4 km）。再深就只剩道面填满屏幕，也容易出现大倍率下画不出来的情况
+const MIN_MPP = 6;
 function zoomCap(){
   if (!proj || !proj.scale) return ZMAX;
   const cap = 111320 / (proj.scale * MIN_MPP);
