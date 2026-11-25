@@ -6,6 +6,8 @@ dist/
 *.log
 _c.js
 apk/*.apk
+!apk/skywave-demo-*.apk
+!apk/天际电波-DEMO.apk
 apk/*.idsig
 .bak/
 build/.freq-check/
