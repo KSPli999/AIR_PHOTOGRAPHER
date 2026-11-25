@@ -29,6 +29,17 @@
 - **版本性质**：当前为 **DEMO 演示版**，功能与数据仍可能调整，不承诺完整性或准确性。
 - **第三方**：道面 © OpenStreetMap contributors（ODbL）；跑道阈值参考 OurAirports（公有领域）。
 
+## 发布链接
+
+| 用途 | 链接 |
+|---|---|
+| 在线预览（第三方渲染 raw） | https://htmlpreview.github.io/?https://raw.githubusercontent.com/KSPli999/AIR_PHOTOGRAPHER/main/docs/index.html |
+| 在线版（GitHub Pages，启用后生效） | https://kspli999.github.io/AIR_PHOTOGRAPHER/ |
+| 仓库 | https://github.com/KSPli999/AIR_PHOTOGRAPHER |
+| DEMO APK（本机） | `/sdcard/Download/天际电波-DEMO.apk` |
+
+启用 GitHub Pages：仓库 Settings → Pages → Source: **Deploy from a branch** → Branch: **main** / 目录 **/docs** → Save，约 1 分钟后 https://kspli999.github.io/AIR_PHOTOGRAPHER/ 生效。
+
 ## 产物 · 只做安卓
 
 | 产物 | 位置 | 用途 |
