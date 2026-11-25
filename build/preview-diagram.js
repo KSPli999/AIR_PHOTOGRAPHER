@@ -64,7 +64,7 @@ const g = (GROUND.ap || {})[id];
 
 // 以机场参考点为视窗中心建投影（scale 固定，再由 zc 放大到屏幕）
 const lat0 = a.arp[0], lon0 = a.arp[1];
-const scale = 900;
+const scale = Number(process.argv[4] || 900);
 API.setProj({ lat0, lon0, cos: Math.cos(lat0 * Math.PI / 180), scale, ox: W / 2, oy: H / 2 });
 const [cx0, cy0] = API.pt(a.arp);
 const body = API.airportDiagram(a, g, zc, API.proj.scale / 111320, null);

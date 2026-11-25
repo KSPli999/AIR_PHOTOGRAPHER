@@ -454,7 +454,21 @@ function render(keepView){
   const pushAir = (o, cfg) => {
     const members = (cfg.members || []).filter(m => m && (m.name || m.main));
     if (!members.length) return;
-    const anchors = anchorsInPoly(o).filter(a => a.x > vb.x0 && a.x < vb.x1 && a.y > vb.y0 && a.y < vb.y1);
+    let anchors = anchorsInPoly(o).filter(a => a.x > vb.x0 && a.x < vb.x1 && a.y > vb.y0 && a.y < vb.y1);
+    if (!anchors.length) {
+      // 放得很大时整块空域都比视窗大：内部候选锚点全在视窗外，
+      // 此时在视窗里补采样点当锚点，否则「放到最大所有频率标注都不见了」
+      const toLL = (x, y) => [proj.lat0 - y / proj.scale, proj.lon0 + x / (proj.cos * proj.scale)];
+      const pts = [];
+      for (const fx of [0.5, 0.34, 0.66, 0.2, 0.8]) {
+        for (const fy of [0.5, 0.36, 0.64, 0.22, 0.78]) {
+          pts.push([vb.x0 + (vb.x1 - vb.x0) * fx, vb.y0 + (vb.y1 - vb.y0) * fy]);
+        }
+      }
+      const cx0 = (vb.x0 + vb.x1) / 2, cy0 = (vb.y0 + vb.y1) / 2;
+      pts.sort((a, b) => Math.hypot(a[0] - cx0, a[1] - cy0) - Math.hypot(b[0] - cx0, b[1] - cy0));
+      anchors = pts.filter(p => inPoly(toLL(p[0], p[1]), o)).map(p => ({x: p[0], y: p[1]}));
+    }
     if (!anchors.length) return;
     labels.push({
       obj: o, anchors, variants: mkLabelVariants(cfg.header || '', members),
@@ -798,7 +812,10 @@ function placeLabels(items, seed, ui){
     if (!ok) {
       // 文字块本身变高（例如放大后多出高度带一行）才允许重排一次；其它冲突一律先隐藏，保持位置不动
       const grew = reason === 'crowd' && prev.h != null && b0 && b0.h > prev.h + 0.5;
-      stickyMiss.set(it, grew ? 'grow' : (reason === 'crowd' ? 'blocked' : reason));
+      // 旧落点整个在视窗外（通常是刚放大到很深的倍率）：不重排就永远看不见，允许换到可见锚点；
+      // 只是被面板挡住/被挤时仍然隐藏不换位，保持「字不追着手指跑」
+      const off = reason === 'edge';
+      stickyMiss.set(it, grew || off ? 'grow' : (reason === 'crowd' ? 'blocked' : reason));
     }
   }
   // 第二遍：新标注按固定锚点顺序找空位；旧位被边缘/面板挡住的直接隐藏，不换位
