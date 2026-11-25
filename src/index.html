@@ -721,7 +721,18 @@ function render(keepView){
   }
 
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  svg.innerHTML = `<g id="world">${g}${placeLabels(labels, aptBoxes, uiSeed)}</g>`;
+  // 放大到道面尺度又不在任何机场附近时，给一句提示，免得看起来像「图坏了」
+  let hint = '';
+  if (zc > 6) {
+    const mx = (vb.x1 - vb.x0) * 0.35, my = (vb.y1 - vb.y0) * 0.35;
+    const near = D.airports.some(a => {
+      const [ax2, ay2] = pt(a.arp);
+      return ax2 > vb.x0 - mx && ax2 < vb.x1 + mx && ay2 > vb.y0 - my && ay2 < vb.y1 + my;
+    });
+    if (!near) hint = `<text x="${(w / 2).toFixed(1)}" y="${(h * 0.62).toFixed(1)}" text-anchor="middle" font-size="12" fill="#3b5165">附近没有机场数据</text>` +
+      `<text x="${(w / 2).toFixed(1)}" y="${(h * 0.62 + 18).toFixed(1)}" text-anchor="middle" font-size="11" fill="#2f4354">可在「频率总表」里搜索机场</text>`;
+  }
+  svg.innerHTML = `<g id="world">${g}${placeLabels(labels, aptBoxes, uiSeed)}</g>${hint}`;
   applyView();
   bindPicks();
 }
@@ -835,24 +846,33 @@ function placeLabels(items, seed, ui){
   return out;
 }
 
-// 经纬网，填充地图留白并给出方位感
+// 经纬网，填充地图留白并给出方位感；步长随缩放自适应，
+// 放大到机场尺度也有网格和经纬度可看，不会出现「放到最大一片空白」
 function grid(P, z, vb){
   let s = '';
-  const x0 = 68, x1 = 140, y0 = 8, y1 = 56;
-  const [ax, ay] = pt([y0, x0]), [bx, by] = pt([y1, x1]);
-  const top = Math.max(ay, vb.y0), bot = Math.min(by, vb.y1);
-  const left = Math.max(ax, vb.x0), right = Math.min(bx, vb.x1);
-  for (let lon = 70; lon <= 140; lon += 10) {
-    const [x] = pt([y0, lon]);
+  const spanLon = (vb.x1 - vb.x0) / (P.cos * P.scale);
+  const spanLat = (vb.y1 - vb.y0) / P.scale;
+  const steps = [20, 10, 5, 2, 1, .5, .2, .1, .05, .02, .01, .005, .002, .001, .0005];
+  const pick = span => { const t = span / 6; for (const v of steps) if (v <= t) return v; return steps[steps.length - 1]; };
+  const dec = st => st >= 1 ? 0 : st >= .1 ? 1 : st >= .01 ? 2 : st >= .001 ? 3 : 4;
+  const lonA = P.lon0 + vb.x0 / (P.cos * P.scale), lonB = P.lon0 + vb.x1 / (P.cos * P.scale);
+  const latA = P.lat0 - vb.y1 / P.scale, latB = P.lat0 - vb.y0 / P.scale;
+  const stLon = pick(spanLon), stLat = pick(spanLat);
+  const dLon = dec(stLon), dLat = dec(stLat);
+  // 只画视窗附近的网格线；超出中国范围的不画
+  const lo0 = Math.max(68, lonA), lo1 = Math.min(140, lonB);
+  const la0 = Math.max(8, latA), la1 = Math.min(56, latB);
+  for (let lon = Math.ceil(lo0 / stLon) * stLon; lon <= lo1 + 1e-9; lon += stLon) {
+    const [x] = pt([la0, lon]);
     if (x < vb.x0 - 20 || x > vb.x1 + 20) continue;
-    s += `<line x1="${nf(x)}" y1="${nf(top)}" x2="${nf(x)}" y2="${nf(bot)}" stroke="#16232e" stroke-width="${sz(0.7 / z)}"/>`;
-    if (x > vb.x0 + 16 && x < vb.x1 - 16) s += `<text x="${nf(x + 2)}" y="${nf(bot - 4)}" font-size="${sz(9 / z)}" fill="#2f4354">${lon}°E</text>`;
+    s += `<line x1="${nf(x)}" y1="${nf(vb.y0)}" x2="${nf(x)}" y2="${nf(vb.y1)}" stroke="#16232e" stroke-width="${sz(0.7 / z)}"/>`;
+    s += `<text x="${nf(x + 2 / z)}" y="${nf(vb.y1 - 4 / z)}" font-size="${sz(9 / z)}" fill="#2f4354">${(+lon.toFixed(dLon)).toFixed(dLon)}°E</text>`;
   }
-  for (let lat = 10; lat <= 55; lat += 10) {
-    const [, y] = pt([lat, x0]);
+  for (let lat = Math.ceil(la0 / stLat) * stLat; lat <= la1 + 1e-9; lat += stLat) {
+    const [, y] = pt([lat, lo0]);
     if (y < vb.y0 - 20 || y > vb.y1 + 20) continue;
-    s += `<line x1="${nf(left)}" y1="${nf(y)}" x2="${nf(right)}" y2="${nf(y)}" stroke="#16232e" stroke-width="${sz(0.7 / z)}"/>`;
-    if (y > vb.y0 + 12 && y < vb.y1 - 6) s += `<text x="${nf(left + 3)}" y="${nf(y - 3)}" font-size="${sz(9 / z)}" fill="#2f4354">${lat}°N</text>`;
+    s += `<line x1="${nf(vb.x0)}" y1="${nf(y)}" x2="${nf(vb.x1)}" y2="${nf(y)}" stroke="#16232e" stroke-width="${sz(0.7 / z)}"/>`;
+    s += `<text x="${nf(vb.x0 + 3 / z)}" y="${nf(y - 3 / z)}" font-size="${sz(9 / z)}" fill="#2f4354">${(+lat.toFixed(dLat)).toFixed(dLat)}°N</text>`;
   }
   return s;
 }

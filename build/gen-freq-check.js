@@ -92,6 +92,7 @@ vm.runInContext(prelude, sandbox);
 const API = sandbox.API;
 
 const SHOTS = [
+  ...(process.env.EXTRA ? [{ name: "extra" + process.env.EXTRA, lat: +process.env.EXTRA.split(",")[0], lon: +process.env.EXTRA.split(",")[1], z: +process.env.EXTRA.split(",")[2] }] : []),
   { name: '全国', lat: 35.0, lon: 104.0, z: 1.0 },
   { name: '全国 z=2（区调扇区）', lat: 35.0, lon: 104.0, z: 2.0 },
   { name: '华北 z=3（区调叠层）', lat: 39.6, lon: 116.4, z: 3.0 },
