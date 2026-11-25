@@ -36,6 +36,8 @@
 | 在线预览（第三方渲染 raw） | https://htmlpreview.github.io/?https://raw.githubusercontent.com/KSPli999/AIR_PHOTOGRAPHER/main/docs/index.html |
 | 在线版（GitHub Pages，启用后生效） | https://kspli999.github.io/AIR_PHOTOGRAPHER/ |
 | 仓库 | https://github.com/KSPli999/AIR_PHOTOGRAPHER |
+| **DEMO APK 下载** | https://github.com/KSPli999/AIR_PHOTOGRAPHER/raw/main/apk/skywave-demo-v36.apk |
+| DEMO APK（仓库内） | `apk/skywave-demo-v36.apk`（同内容：`apk/天际电波-DEMO.apk`） |
 | DEMO APK（本机） | `/sdcard/Download/天际电波-DEMO.apk` |
 
 启用 GitHub Pages：仓库 Settings → Pages → Source: **Deploy from a branch** → Branch: **main** / 目录 **/docs** → Save，约 1 分钟后 https://kspli999.github.io/AIR_PHOTOGRAPHER/ 生效。
