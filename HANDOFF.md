@@ -53,7 +53,7 @@ App 内「数据说明」页顶部固定显示「声明与免责」六条：①�
 ## 3. 目录与产物
 
 工程根目录：`~/work/airspace`（= `/data/user/0/app.dsh.mobile/files/dsh-home/work/airspace`）
-git remote：`git@github.com:KSPli999/AIR_PHOTOGRAPHER.git`，分支 `main`
+git remote：`git@github.com:KSPli999/SKYWAVE.git`，分支 `main`
 （本机 git 需加 `-c safe.directory='*'`）
 
 ```

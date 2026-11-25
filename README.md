@@ -14,13 +14,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/KSPli999/AIR_PHOTOGRAPHER/raw/main/apk/skywave-demo-v36.apk"><b>⬇️ 下载 DEMO APK（安卓直装）</b></a>
+  <a href="https://github.com/KSPli999/SKYWAVE/raw/main/apk/skywave-demo-v36.apk"><b>⬇️ 下载 DEMO APK（安卓直装）</b></a>
   &nbsp;·&nbsp;
-  <a href="https://kspli999.github.io/AIR_PHOTOGRAPHER/"><b>▶️ 在线试玩（免安装）</b></a>
+  <a href="https://kspli999.github.io/SKYWAVE/"><b>▶️ 在线试玩（免安装）</b></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/KSPli999/AIR_PHOTOGRAPHER"><img src="docs/social-preview.png" alt="天际电波 SKYWAVE" width="880"></a>
+  <a href="https://github.com/KSPli999/SKYWAVE"><img src="docs/social-preview.png" alt="天际电波 SKYWAVE" width="880"></a>
 </p>
 
 > **如果这个项目帮你少翻了 200 页 AIP，给个 ⭐ 吧** —— 星标是它继续更新下一个 eAIP 周期的唯一动力。
@@ -67,14 +67,14 @@
 
 | 用途 | 链接 |
 |---|---|
-| 在线预览（备用，第三方 CDN） | https://raw.githack.com/KSPli999/AIR_PHOTOGRAPHER/main/docs/index.html |
-| **在线版（GitHub Pages）** | https://kspli999.github.io/AIR_PHOTOGRAPHER/ |
-| 仓库 | https://github.com/KSPli999/AIR_PHOTOGRAPHER |
-| **DEMO APK 下载** | https://github.com/KSPli999/AIR_PHOTOGRAPHER/raw/main/apk/skywave-demo-v36.apk |
+| 在线预览（备用，第三方 CDN） | https://raw.githack.com/KSPli999/SKYWAVE/main/docs/index.html |
+| **在线版（GitHub Pages）** | https://kspli999.github.io/SKYWAVE/ |
+| 仓库 | https://github.com/KSPli999/SKYWAVE |
+| **DEMO APK 下载** | https://github.com/KSPli999/SKYWAVE/raw/main/apk/skywave-demo-v36.apk |
 | DEMO APK（仓库内） | `apk/skywave-demo-v36.apk`（同内容：`apk/天际电波-DEMO.apk`） |
 | DEMO APK（本机） | `/sdcard/Download/天际电波-DEMO.apk` |
 
-启用 GitHub Pages：仓库 Settings → Pages → Source: **Deploy from a branch** → Branch: **main** / 目录 **/docs** → Save，约 1 分钟后 https://kspli999.github.io/AIR_PHOTOGRAPHER/ 生效。
+启用 GitHub Pages：仓库 Settings → Pages → Source: **Deploy from a branch** → Branch: **main** / 目录 **/docs** → Save，约 1 分钟后 https://kspli999.github.io/SKYWAVE/ 生效。
 
 ## 产物 · 只做安卓
 
