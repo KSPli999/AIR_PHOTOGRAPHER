@@ -111,6 +111,12 @@ work/airspace/
 | 航站楼 | 197 栋 / 82 场 |
 | 跑道端（总表） | 254 个，其中 237 个有 ILS |
 
+### 4.1.1 生成器对 AD 2.17 的处理（2026-11-27 修）
+
+- **圆形管制地带**：不少机场 AIP 只写「circle, radius 15km centered at AD ARP / VOR/DME(XXX)」，没有经纬度串。`gen-national.js` 的 `circleCtr()` 按半径（km/NM）+ 圆心（显式坐标 → VOR/DME → 机场基准点）生成 72 边形，否则这些机场（含北京首都/大兴）没有塔台管制区多边形，塔台频率也就永远不会出现在图上。
+- **度分坐标**：`N4156E11546`（DDMM，无秒）之前解析失败，导致放油区/禁飞区缺失；`toDeg()` 现在同时支持 DDMM / DDMMSS 紧凑写法。
+- **高度表转换区**：不是无线电空域，生成时直接跳过（AIP 里多为「Same as … area」）。
+
 ### 4.2 `data/CN.json`（主数据）
 
 顶层：`meta, site, cycle, effective, nextEffective, arp, airports[], areas[], sectors[], fir[], ctr[], border[]`

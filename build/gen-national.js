@@ -23,9 +23,14 @@ const NEXT_EFFECTIVE = '2026-12-24';
 function toDeg(t, degLen) {
   const raw = String(t).trim();
   const compact = raw.replace(/[°′″'":\s.]/g, '');
-  // 紧凑格式 DDMMSS / DDDMMSS（无度分秒符号）
-  if (!/[°′″'":]/.test(raw) && compact.length >= degLen + 4 && /^\d+$/.test(compact)) {
-    return +compact.slice(0, degLen) + +compact.slice(degLen, degLen + 2) / 60 + +compact.slice(degLen + 2, degLen + 4) / 3600;
+  // 紧凑格式：DDMM / DDDMM（无秒）、DDMMSS / DDDMMSS（有秒），AIP 两种都会出现
+  if (!/[°′″'":]/.test(raw) && /^\d+$/.test(compact)) {
+    if (compact.length === degLen + 2) {
+      return +compact.slice(0, degLen) + +compact.slice(degLen) / 60;
+    }
+    if (compact.length >= degLen + 4) {
+      return +compact.slice(0, degLen) + +compact.slice(degLen, degLen + 2) / 60 + +compact.slice(degLen + 2, degLen + 4) / 3600;
+    }
   }
   const p = raw.split(/[°′″'":\s]+/).filter(Boolean);
   const d = +p[0] || 0, mm = +p[1] || 0, ss = +p[2] || 0;
@@ -44,6 +49,37 @@ function polyFromText(text) {
   if (!text) return [];
   const tokens = String(text).match(/N[\d°′″'":. ]{3,22}?E[\d°′″'":. ]{3,22}/g) || [];
   return tokens.map(parsePt).filter(Boolean);
+}
+// AIP 里有的管制地带只写文字，例如 “circle, radius 15km centered at AD ARP”，
+// 这类行没有经纬度串，polyFromText 返回空，于是北京等 37 个机场一直没有塔台管制区。
+// 这里按“半径 + 圆心”生成 72 边形近似圆：圆心优先显式坐标 / VOR/DME，兜底机场基准点。
+function circleCtr(text, arp, navs) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  if (!/circle|circular/i.test(t)) return null;
+  const m = /(?:radius|radium|rad)\s*(?:of\s*)?([\d.]+)\s*(km|NM)/i.exec(t);
+  if (!m) return null;
+  const R = parseFloat(m[1]) * (/^nm$/i.test(m[2]) ? 1852 : 1000);
+  let center = null;
+  const coord = t.match(/N[\d°′″'":. ]{3,22}?E[\d°′″'":. ]{3,22}/);
+  if (coord) center = parsePt(coord[0]);
+  if (!center) {
+    const idm = /VOR\/DME\s*\(\s*([A-Z0-9]{2,4})\s*\)|\b([A-Z0-9]{2,4})\s+VOR\/DME\b/i.exec(t);
+    const id = idm ? (idm[1] || idm[2]) : null;
+    if (id) {
+      const nav = (navs || []).find((n) => String(n.id || '').toUpperCase() === id.toUpperCase() && n.lat && n.lon);
+      if (nav) center = parsePt(String(nav.lat) + ' ' + String(nav.lon));
+    }
+  }
+  if (!center) center = arp;
+  if (!center) return null;
+  const N = 72, pts = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const lat = center[0] + (R * Math.cos(a)) / 111320;
+    const dLon = (R * Math.sin(a)) / (111320 * Math.cos((lat * Math.PI) / 180));
+    pts.push([lat, center[1] + dLon]);
+  }
+  return pts;
 }
 // ---------------- 国界（补齐 “National Boundaries”） ----------------
 const BORDER = (() => {
@@ -235,12 +271,17 @@ for (const r of roots) {
   }));
 
   for (const o of ((d.AD_2_17 || {}).list || [])) {
-    const pts = polyFromText(o.noteLateralLimit || '');
+    const desig = clean(o.designation) || '塔台管制区';
+    // 高度表转换区不是无线电空域：AIP 里常写 “Same as … area”，也有写成 circle 的，一律不画
+    if (/altimeter/i.test(desig)) continue;
+    let pts = polyFromText(o.noteLateralLimit || '');
+    if (pts.length < 3) pts = circleCtr(o.noteLateralLimit || '', arp, navs) || [];
     if (pts.length < 3) continue;
+    const isCtr = /control zone|tower control/i.test(desig);
     ctrs.push({
       icao,
-      nameCn: clean(o.designation) || '塔台管制区',
-      nameEn: clean(o.designation),
+      nameCn: isCtr ? ((clean(a1.nameCn) || icao) + '塔台管制区') : desig,
+      nameEn: desig,
       vertical: vertical(o),
       pts,
     });
